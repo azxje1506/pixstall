@@ -8,6 +8,8 @@ Store-ready App Store & Google Play screenshots — plus the Play feature graphi
 - Multi-language captions, store rule checker
 - Export ZIP: exact pixel sizes, PNG **without alpha** (RGB) or JPG — rendered locally, nothing uploaded
 
+Live: https://pixstall.vercel.app — every push to `main` auto-deploys on Vercel.
+
 ## Dev
 ```bash
 npm i
