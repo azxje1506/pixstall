@@ -1,8 +1,9 @@
 // Vẽ 1 screenshot (SlideCanvas) hoặc Feature Graphic 1024×500 (FeatureCanvas) ở bề ngang W px bất kỳ
 // Quy ước: font-size gốc = W/100 px → 1em = 1% bề ngang, nên thumbnail, canvas và file xuất giống hệt nhau
-import type { CSSProperties, ReactNode } from "react";
+// Có prop `edit` → chế độ sửa trực tiếp: kéo máy/chữ để dời (dx,dy / tx,ty), kéo góc máy đổi cỡ, double-click chữ để gõ
+import type { CSSProperties, ReactNode, PointerEvent as RPE, MouseEvent as RME, KeyboardEvent as RKE, FocusEvent as RFE } from "react";
 import { FEATURE_ICONS } from "./icons";
-import type { Project, SizePreset } from "@/lib/types";
+import type { Project, SizePreset, Slide } from "@/lib/types";
 import { FONTS, FEATURE_SIZE } from "@/lib/presets";
 import { textOf } from "@/lib/rules";
 import { mockScreen } from "@/lib/mocks";
@@ -20,17 +21,40 @@ function background(p: Project, i: number, hEm: number, n: number): CSSPropertie
   };
 }
 
+// --- Chế độ sửa trên canvas ---
+export type CanvasPick = "device" | "text" | null;
+export interface CanvasEdit {
+  sel: CanvasPick;
+  onSel: (v: CanvasPick) => void;
+  onPatch: (patch: Partial<Slide>, tag: string) => void;
+}
+
+const SNAP = 1.2; // em: gần tâm thì hút về 0
+const snap = (v: number) => (Math.abs(v) < SNAP ? 0 : Math.round(v * 10) / 10);
+
+// Kéo chuột: đổi px → em theo bề ngang slide, gọi onMove liên tục tới khi nhả
+function startDrag(e: RPE, k: number, onMove: (dxEm: number, dyEm: number) => void) {
+  const sx = e.clientX, sy = e.clientY;
+  const move = (ev: PointerEvent) => onMove((ev.clientX - sx) / k, (ev.clientY - sy) / k);
+  const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); document.body.classList.remove("dragging"); };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up);
+  document.body.classList.add("dragging");
+}
+
 function Screen({ p, i }: { p: Project; i: number }) {
   const s = p.slides[i];
   if (!s) return null;
   return s.img ? <img src={s.img} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : <div dangerouslySetInnerHTML={{ __html: mockScreen(s.mock) }} />;
 }
 
-export function SlideCanvas({ p, index, width, size, loc }: { p: Project; index: number; width: number; size: SizePreset; loc?: string }) {
+export function SlideCanvas({ p, index, width, size, loc, edit }: { p: Project; index: number; width: number; size: SizePreset; loc?: string; edit?: CanvasEdit }) {
   const s = p.slides[index], t = p.theme, n = p.slides.length;
   if (!s) return null;
+  const L = loc ?? p.loc, k = width / 100;
+  const dx = s.dx ?? 0, dy = s.dy ?? 0, tx = s.tx ?? 0, ty = s.ty ?? 0;
   const hEm = (100 * size.h) / size.w;
-  const [title, sub] = textOf(s, loc ?? p.loc);
+  const [title, sub] = textOf(s, L);
   const tab = size.kind === "tablet", asp = ASPECT[size.kind];
   const ink = t.ink === "light" ? "#fff" : "#15151A";
 
@@ -38,28 +62,68 @@ export function SlideCanvas({ p, index, width, size, loc }: { p: Project; index:
   const padT = tab ? 6 : 9;
   const textH = t.tsize * 2.35 + (sub ? t.tsize * 0.9 + 1.6 : 0);
   const below = padT + textH + 4; // máy bắt đầu dưới khối chữ
-  const textStyle: CSSProperties = { position: "absolute", left: "8em", right: "8em", zIndex: 3, textAlign: t.align, color: ink, fontFamily: FONTS[t.font] };
-  const dev = { kind: size.kind, store: p.store, theme: t, rx: s.rx, ry: s.ry, rz: s.rz };
+  const textStyle: CSSProperties = { position: "absolute", left: "8em", right: "8em", zIndex: 3, textAlign: t.align, color: ink, fontFamily: FONTS[t.font], transform: tx || ty ? `translate(${tx}em,${ty}em)` : undefined };
+
+  // --- Bắt kéo thả khi đang sửa (edit có mặt) ---
+  const centered = s.layout === "center" || s.layout === "bleed" || s.layout === "bottom";
+  const hitDev = edit && {
+    className: `ed-hit ${edit.sel === "device" ? "sel" : ""}`,
+    onPointerDown: (e: RPE) => {
+      if (e.button !== 0) return;
+      e.stopPropagation(); edit.onSel("device");
+      startDrag(e, k, (mx, my) => edit.onPatch({ dx: snap(dx + mx), dy: snap(dy + my) }, "drag-dev"));
+    },
+  };
+  // Nút góc: kéo ngang đổi cỡ máy (máy canh giữa thì nở 2 phía → nhân 2)
+  const handle = edit?.sel === "device" && s.layout !== "duo" ? (
+    <span className="ed-handle" onPointerDown={(e) => {
+      e.stopPropagation();
+      startDrag(e, k, (mx) => edit.onPatch({ scale: Math.round(Math.min(100, Math.max(40, s.scale + mx * (centered ? 2 : 1)))) }, "drag-scale"));
+    }} />
+  ) : undefined;
+  const hitText = edit && {
+    className: `ed-hit ${edit.sel === "text" ? "sel" : ""}`,
+    onPointerDown: (e: RPE) => {
+      if (e.button !== 0 || (e.target as HTMLElement).isContentEditable) return;
+      e.stopPropagation(); edit.onSel("text");
+      startDrag(e, k, (mx, my) => edit.onPatch({ tx: snap(tx + mx), ty: snap(ty + my) }, "drag-text"));
+    },
+  };
+  // Double-click chữ → gõ thẳng; rời ô (hoặc Enter) thì lưu theo ngôn ngữ đang xem
+  const editable = (i: 0 | 1) => edit && {
+    suppressContentEditableWarning: true,
+    onDoubleClick: (e: RME<HTMLElement>) => {
+      const el = e.currentTarget; el.contentEditable = "true"; el.focus();
+      const r = document.createRange(); r.selectNodeContents(el); const sl = getSelection(); sl?.removeAllRanges(); sl?.addRange(r);
+    },
+    onKeyDown: (e: RKE<HTMLElement>) => { e.stopPropagation(); if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur(); } if (e.key === "Escape") e.currentTarget.blur(); },
+    onBlur: (e: RFE<HTMLElement>) => {
+      const el = e.currentTarget; el.contentEditable = "false";
+      const cur = [...textOf(s, L)] as [string, string]; cur[i] = el.innerText.trim();
+      if (cur[i] !== textOf(s, L)[i]) edit.onPatch({ t: { ...s.t, [L]: cur } }, "");
+    },
+  };
+  const dev = { kind: size.kind, store: p.store, theme: t, rx: s.rx, ry: s.ry, rz: s.rz, hit: hitDev || undefined };
   let devices: ReactNode = null;
 
   if (s.layout === "bottom") {
     textStyle.bottom = `${padT}em`;
     const w = Math.min(s.scale, (hEm - 7 - textH - padT - 5) / asp);
-    devices = <Device {...dev} w={w} x={(100 - w) / 2} y={6}><Screen p={p} i={index} /></Device>;
+    devices = <Device {...dev} handle={handle} w={w} x={(100 - w) / 2 + dx} y={6 + dy}><Screen p={p} i={index} /></Device>;
   } else {
     textStyle.top = `${padT}em`;
     if (s.layout === "center") {
       const w = Math.min(s.scale, (hEm - below - 5) / asp);
-      devices = <Device {...dev} w={w} x={(100 - w) / 2} y={below}><Screen p={p} i={index} /></Device>;
+      devices = <Device {...dev} handle={handle} w={w} x={(100 - w) / 2 + dx} y={below + dy}><Screen p={p} i={index} /></Device>;
     }
-    if (s.layout === "bleed") devices = <Device {...dev} w={s.scale} x={(100 - s.scale) / 2} y={below}><Screen p={p} i={index} /></Device>;
-    if (s.layout === "offset") devices = <Device {...dev} w={s.scale} x={34} y={below - 2}><Screen p={p} i={index} /></Device>;
+    if (s.layout === "bleed") devices = <Device {...dev} handle={handle} w={s.scale} x={(100 - s.scale) / 2 + dx} y={below + dy}><Screen p={p} i={index} /></Device>;
+    if (s.layout === "offset") devices = <Device {...dev} handle={handle} w={s.scale} x={34 + dx} y={below - 2 + dy}><Screen p={p} i={index} /></Device>;
     if (s.layout === "duo") {
       const w = s.scale * 0.66;
       devices = (
         <>
-          <Device {...dev} rz={s.rz + 6} w={w} x={100 - 5 - w} y={below + 8} z={1}><Screen p={p} i={(index + 1) % n} /></Device>
-          <Device {...dev} rz={s.rz - 4} w={w} x={5} y={below}><Screen p={p} i={index} /></Device>
+          <Device {...dev} rz={s.rz + 6} w={w} x={100 - 5 - w + dx} y={below + 8 + dy} z={1}><Screen p={p} i={(index + 1) % n} /></Device>
+          <Device {...dev} rz={s.rz - 4} w={w} x={5 + dx} y={below + dy}><Screen p={p} i={index} /></Device>
         </>
       );
     }
@@ -74,9 +138,9 @@ export function SlideCanvas({ p, index, width, size, loc }: { p: Project; index:
           <div style={{ position: "absolute", inset: 0, background: `rgba(0,0,0,${t.overlay / 100})` }} />
         </>
       )}
-      <div style={textStyle}>
-        <h2 style={{ fontSize: `${t.tsize}em`, fontWeight: 800, lineHeight: 1.08, letterSpacing: "-.02em", margin: 0 }}>{title}</h2>
-        {sub && <p style={{ fontSize: `${t.tsize * 0.48}em`, marginTop: "1.4em", marginBottom: 0, opacity: 0.85, fontWeight: 500, lineHeight: 1.3 }}>{sub}</p>}
+      <div {...hitText} style={textStyle}>
+        <h2 {...editable(0)} style={{ fontSize: `${t.tsize}em`, fontWeight: 800, lineHeight: 1.08, letterSpacing: "-.02em", margin: 0 }}>{title}</h2>
+        {sub && <p {...editable(1)} style={{ fontSize: `${t.tsize * 0.48}em`, marginTop: "1.4em", marginBottom: 0, opacity: 0.85, fontWeight: 500, lineHeight: 1.3 }}>{sub}</p>}
       </div>
       {devices}
     </div>

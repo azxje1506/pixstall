@@ -1,13 +1,15 @@
 // Cột phải: thuộc tính slide (chữ, layout, nghiêng 3D) hoặc Feature graphic, rồi Theme dùng chung mọi slide
 // Mọi thay đổi đi qua update(fn, tag) — tag giúp gộp các lần kéo slider thành 1 bước undo
-import type { ReactNode } from "react";
-import { ImageUp, CopyPlus, Layers, Palette, Type, RotateCcw, Smartphone, EyeOff, TextAlignStart, TextAlignCenter, Sun, Moon, Rotate3d,
+// Bố cục kiểu Framer: hàng thuộc tính nhãn trái/điều khiển phải; nhóm Position đồng bộ với kéo thả trên canvas (pick)
+import { useState, type ReactNode } from "react";
+import { ImageUp, CopyPlus, ImageOff, Move, Layers, Palette, Type, RotateCcw, Smartphone, EyeOff, TextAlignStart, TextAlignCenter, Sun, Moon, Rotate3d,
   PanelBottom, ArrowDownToLine, Copy, MoveRight } from "lucide-react";
 import type { Project, Slide, Theme, Feature, Layout, Tilt3D, FrameStyle, FrameColor, Bg } from "@/lib/types";
 import { FONTS, FRAME_COLORS, GRADIENTS, TILT_PRESETS, DEFAULT_THEME, LOCALES } from "@/lib/presets";
 import { textOf } from "@/lib/rules";
 import { FEATURE_ICONS } from "./icons";
-import { Seg, Slider, Group } from "./ui";
+import { Seg, Slider, Group, Num, Prop } from "./ui";
+import type { CanvasPick } from "./SlideCanvas";
 
 type Update = (fn: (d: Project) => Project, tag?: string) => void;
 
@@ -39,10 +41,10 @@ function TiltControls({ v, scale, scaleRange, onChange, tag }: { v: Tilt3D; scal
           </button>
         ))}
       </div>
-      <Slider label="Rotate X · lean" value={v.rx} min={-45} max={45} unit="°" onChange={(rx) => onChange({ rx }, tag + "rx")} />
-      <Slider label="Rotate Y · turn" value={v.ry} min={-45} max={45} unit="°" onChange={(ry) => onChange({ ry }, tag + "ry")} />
-      <Slider label="Rotate Z · spin" value={v.rz} min={-30} max={30} unit="°" onChange={(rz) => onChange({ rz }, tag + "rz")} />
-      <Slider label="Device size" value={scale} min={scaleRange[0]} max={scaleRange[1]} unit="%" onChange={(s) => onChange({ scale: s }, tag + "sc")} />
+      <Slider label="Lean X" value={v.rx} min={-45} max={45} unit="°" onChange={(rx) => onChange({ rx }, tag + "rx")} />
+      <Slider label="Turn Y" value={v.ry} min={-45} max={45} unit="°" onChange={(ry) => onChange({ ry }, tag + "ry")} />
+      <Slider label="Spin Z" value={v.rz} min={-30} max={30} unit="°" onChange={(rz) => onChange({ rz }, tag + "rz")} />
+      <Slider label="Size" value={scale} min={scaleRange[0]} max={scaleRange[1]} unit="%" onChange={(s) => onChange({ scale: s }, tag + "sc")} />
     </Group>
   );
 }
@@ -61,8 +63,8 @@ function ThemeControls({ t, set }: { t: Theme; set: (patch: Partial<Theme>, tag?
           <span className="mono" style={{ marginLeft: 4 }}>{FRAME_COLORS[t.frameColor].label}</span>
         </div>
         <Slider label="Bezel" value={t.bezel} min={0} max={6} step={0.2} unit="%" onChange={(bezel) => set({ bezel }, "bezel")} />
-        <Slider label="Rounded corners" value={t.radius} min={0} max={20} step={0.5} unit="%" onChange={(radius) => set({ radius }, "radius")} />
-        <Slider label="Thickness (3D)" value={t.depth} min={0} max={8} step={0.5} unit="%" onChange={(depth) => set({ depth }, "depth")} />
+        <Slider label="Radius" value={t.radius} min={0} max={20} step={0.5} unit="%" onChange={(radius) => set({ radius }, "radius")} />
+        <Slider label="Depth" value={t.depth} min={0} max={8} step={0.5} unit="%" onChange={(depth) => set({ depth }, "depth")} />
         <Slider label="Shadow" value={t.shadow} min={0} max={60} onChange={(shadow) => set({ shadow }, "shadow")} />
       </Group>
       <Group title="Background">
@@ -89,20 +91,24 @@ function ThemeControls({ t, set }: { t: Theme; set: (patch: Partial<Theme>, tag?
         </>}
       </Group>
       <Group title="Typography">
-        <label className="chip tall"><Type />
-          <select value={t.font} onChange={(e) => set({ font: e.target.value })}>
-            {Object.keys(FONTS).map((f) => <option key={f}>{f}</option>)}
-          </select>
-        </label>
-        <Slider label="Headline size" value={t.tsize} min={5} max={12} step={0.5} onChange={(tsize) => set({ tsize }, "tsize")} />
-        <div className="two">
+        <Prop label="Font">
+          <label className="chip"><Type />
+            <select value={t.font} onChange={(e) => set({ font: e.target.value })}>
+              {Object.keys(FONTS).map((f) => <option key={f}>{f}</option>)}
+            </select>
+          </label>
+        </Prop>
+        <Slider label="Size" value={t.tsize} min={5} max={12} step={0.5} onChange={(tsize) => set({ tsize }, "tsize")} />
+        <Prop label="Align">
           <Seg full value={t.align} onChange={(align: Theme["align"]) => set({ align })} options={[
             { v: "left", icon: <TextAlignStart />, title: "Left" }, { v: "center", icon: <TextAlignCenter />, title: "Center" },
           ]} />
+        </Prop>
+        <Prop label="Ink">
           <Seg full value={t.ink} onChange={(ink: Theme["ink"]) => set({ ink })} options={[
             { v: "light", label: "Light", icon: <Sun /> }, { v: "dark", label: "Dark", icon: <Moon /> },
           ]} />
-        </div>
+        </Prop>
       </Group>
       <Group>
         <button className="ghost" onClick={() => set({ ...DEFAULT_THEME })}><RotateCcw />Reset theme</button>
@@ -111,7 +117,11 @@ function ThemeControls({ t, set }: { t: Theme; set: (patch: Partial<Theme>, tag?
   );
 }
 
-export function Inspector({ p, sel, tab, update, onReplace, onDuplicate }: { p: Project; sel: number; tab: "slide" | "feature"; update: Update; onReplace: () => void; onDuplicate: () => void }) {
+export function Inspector({ p, sel, tab, update, pick, onReplace, onReplaceFile, onDuplicate }: {
+  p: Project; sel: number; tab: "slide" | "feature"; update: Update; pick: CanvasPick;
+  onReplace: () => void; onReplaceFile: (f?: File) => void; onDuplicate: () => void;
+}) {
+  const [hot, setHot] = useState(false); // kéo file ngang thẻ Screenshot
   const setTheme = (patch: Partial<Theme>, tag?: string) => update((d) => ({ ...d, theme: { ...d.theme, ...patch } }), tag);
   const setSlide = (patch: Partial<Slide>, tag?: string) =>
     update((d) => ({ ...d, slides: d.slides.map((s, i) => (i === sel ? { ...s, ...patch } : s)) }), tag);
@@ -150,22 +160,51 @@ export function Inspector({ p, sel, tab, update, onReplace, onDuplicate }: { p: 
     cur[k] = v;
     setSlide({ t: { ...s.t, [p.loc]: cur } }, `text${k}`);
   };
+  const moved = !!(s.dx || s.dy || s.tx || s.ty);
   return (
     <aside className="right">
-      <Group title={`Slide ${sel + 1}`} right={<span className="mono">{LOCALES[p.loc]}</span>}>
+      <Group title={`Slide ${String(sel + 1).padStart(2, "0")}`} right={<span className="row g4"><span className="mono">{LOCALES[p.loc]}</span><button className="ibtn" title="Duplicate slide" onClick={onDuplicate}><CopyPlus /></button></span>}>
         <textarea className="field" rows={2} value={title} placeholder="Headline" onChange={(e) => setText(0, e.target.value)} />
         <input className="field" value={sub} placeholder="Subtitle (optional)" onChange={(e) => setText(1, e.target.value)} />
-        <div className="two">
-          <button className="ghost" onClick={onReplace}><ImageUp />Screenshot</button>
-          <button className="ghost" onClick={onDuplicate}><CopyPlus />Duplicate</button>
+      </Group>
+
+      {/* Thẻ ảnh chụp: xem ảnh đang dùng, bấm/thả để thay, gỡ để quay về màn mẫu */}
+      <Group title="Screenshot">
+        <div className={`shot ${hot ? "hot" : ""}`}
+          onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); e.stopPropagation(); setHot(true); } }}
+          onDragLeave={() => setHot(false)}
+          onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setHot(false); onReplaceFile(e.dataTransfer.files[0]); }}>
+          <div className="shot-img">{s.img ? <img src={s.img} alt="" /> : <ImageUp />}</div>
+          <div className="shot-meta">
+            <span className="shot-t">{s.img ? "Your screenshot" : "Sample screen"}</span>
+            <span className="hint">{hot ? "Drop to replace" : s.img ? "Drop a new image to replace" : "Drop an image or browse"}</span>
+            <span className="row g4">
+              <button className="primary sm" onClick={onReplace}><ImageUp />{s.img ? "Replace" : "Upload"}</button>
+              {s.img && <button className="ghost sm" title="Remove image" onClick={() => setSlide({ img: null })}><ImageOff /></button>}
+            </span>
+          </div>
         </div>
       </Group>
+
       <Group title="Layout">
         <div className="layouts">
           {LAYOUTS.map((l) => (
             <button key={l.v} className={s.layout === l.v ? "on" : ""} onClick={() => setSlide({ layout: l.v })}>{l.icon}{l.label}</button>
           ))}
         </div>
+      </Group>
+
+      {/* Vị trí: đồng bộ với kéo thả trên canvas; hàng đang chọn được tô sáng */}
+      <Group title="Position" right={moved ? <button className="ibtn" title="Reset positions" onClick={() => setSlide({ dx: 0, dy: 0, tx: 0, ty: 0 })}><RotateCcw /></button> : <Move className="muted" />}>
+        <Prop label="Device" hot={pick === "device"}>
+          <Num prefix="X" value={s.dx ?? 0} step={0.5} onChange={(dx) => setSlide({ dx }, "pdx")} />
+          <Num prefix="Y" value={s.dy ?? 0} step={0.5} onChange={(dy) => setSlide({ dy }, "pdy")} />
+        </Prop>
+        <Prop label="Text" hot={pick === "text"}>
+          <Num prefix="X" value={s.tx ?? 0} step={0.5} onChange={(tx) => setSlide({ tx }, "ptx")} />
+          <Num prefix="Y" value={s.ty ?? 0} step={0.5} onChange={(ty) => setSlide({ ty }, "pty")} />
+        </Prop>
+        <p className="hint">Drag on canvas · arrow keys nudge · units are % of slide width</p>
       </Group>
       <TiltControls v={s} scale={s.scale} scaleRange={[40, 100]} tag="s" onChange={(patch, tag) => setSlide(patch, tag)} />
       {theme}

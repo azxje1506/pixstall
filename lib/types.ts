@@ -29,6 +29,9 @@ export interface Slide extends Tilt3D {
   scale: number; // bề ngang máy, % bề ngang slide
   img: string | null; // dataURL ảnh chụp; null = dùng màn mẫu
   mock: number; // số màn mẫu khi chưa có ảnh
+  // Dời vị trí khi kéo trên canvas (em = % bề ngang slide); thiếu = 0 (dự án cũ)
+  dx?: number; dy?: number; // máy
+  tx?: number; ty?: number; // khối chữ
 }
 
 export type FrameStyle = "auto" | "iphone" | "pixel" | "none";

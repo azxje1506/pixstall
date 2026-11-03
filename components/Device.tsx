@@ -1,6 +1,7 @@
 // Khung thiết bị 3D: viền mảnh theo % bề ngang máy, xoay rotateX/Y/Z có phối cảnh, thân dày giả bằng các lớp xếp chồng
 // Mọi kích thước dùng em của slide (1em = 1% bề ngang slide) để xem trước và xuất ảnh ra cùng một kết quả
-import type { CSSProperties, ReactNode } from "react";
+// `hit` = thuộc tính gắn vào khung ngoài (bắt kéo thả trên canvas); `handle` = nút kéo đổi cỡ ở góc phải dưới
+import type { CSSProperties, HTMLAttributes, ReactNode } from "react";
 import type { Kind, Store, Theme, Tilt3D } from "@/lib/types";
 import { FRAME_COLORS } from "@/lib/presets";
 import { resolveFrame } from "@/lib/rules";
@@ -16,14 +17,18 @@ interface Props extends Tilt3D {
   theme: Theme;
   children: ReactNode;
   z?: number;
+  hit?: HTMLAttributes<HTMLDivElement>;
+  handle?: ReactNode;
 }
 
-export function Device({ w, x, y, rx, ry, rz, kind, store, theme, children, z = 2 }: Props) {
+export function Device({ w, x, y, rx, ry, rz, kind, store, theme, children, z = 2, hit, handle }: Props) {
   const frame = resolveFrame(theme.frame, store);
   const col = FRAME_COLORS[theme.frameColor];
   const h = w * ASPECT[kind];
   const bezel = frame === "none" ? 0 : (w * theme.bezel) / 100;
   const r = ((w * theme.radius) / 100) * (kind === "tablet" ? 0.55 : 1);
+  // Bo màn đồng tâm với bo khung: rIn = rOut − bezel (em slide). Màn có font-size riêng (w/100) → đổi sang em của màn
+  const rIn = Math.max(r - bezel, 0) / (w / 100);
   const tilted = rx !== 0 || ry !== 0;
   const depth = (w * theme.depth) / 100;
   const layers = frame === "none" || !tilted ? 0 : 6;
@@ -35,14 +40,14 @@ export function Device({ w, x, y, rx, ry, rz, kind, store, theme, children, z = 
   const mainShadow = [frame === "none" ? "" : `inset 0 0 0 ${w * 0.005}em ${col.edge}`, !layers && s ? shadow : ""].filter(Boolean).join(",") || "none";
 
   return (
-    <div style={{ position: "absolute", left: `${x}em`, top: `${y}em`, width: `${w}em`, height: `${h}em`, perspective: `${w * 7}em`, zIndex: z }}>
+    <div {...hit} style={{ position: "absolute", left: `${x}em`, top: `${y}em`, width: `${w}em`, height: `${h}em`, perspective: `${w * 7}em`, zIndex: z, ...hit?.style }}>
       <div style={{ position: "relative", width: "100%", height: "100%", transformStyle: "preserve-3d", transform: `rotateX(${rx}deg) rotateY(${ry}deg) rotateZ(${rz}deg)` }}>
         {/* Thân máy: các lớp lùi dần theo trục Z, tạo cạnh dày khi nghiêng */}
         {Array.from({ length: layers }, (_, i) => (
           <div key={i} style={{ ...plate, background: col.side, transform: `translateZ(${-(depth * (i + 1)) / layers}em)`, boxShadow: i === layers - 1 ? shadow : "none" }} />
         ))}
         <div style={{ ...plate, padding: `${bezel}em`, background: frame === "none" ? "transparent" : col.body, boxShadow: mainShadow }}>
-          <div className="scr" style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden", borderRadius: `${Math.max(r - bezel, r * 0.2)}em`, background: "#fff", fontSize: `${w / 100}em` }}>
+          <div className="scr" style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden", borderRadius: `${rIn}em`, background: "#fff", fontSize: `${w / 100}em` }}>
             {children}
             {frame === "iphone" && kind === "phone" && (
               <div style={{ position: "absolute", top: "2.2em", left: "50%", transform: "translateX(-50%)", width: "28em", height: "8em", borderRadius: "5em", background: "#000", zIndex: 3 }} />
@@ -53,6 +58,7 @@ export function Device({ w, x, y, rx, ry, rz, kind, store, theme, children, z = 
           </div>
         </div>
       </div>
+      {handle}
     </div>
   );
 }

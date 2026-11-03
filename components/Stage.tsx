@@ -1,11 +1,11 @@
 // Vùng giữa: dải slide như trên store (hoặc 1 slide / Feature graphic) + thanh dưới: kiểm tra luật store, lật slide
-// Thả file ảnh trực tiếp vào đây để thêm slide
+// Thả file ảnh trực tiếp vào đây để thêm slide. Slide đang chọn nhận `edit` → kéo máy/chữ ngay trên canvas; bấm nền để bỏ chọn
 import { useEffect, useRef, useState } from "react";
-import { ShieldCheck, TriangleAlert, CircleCheck, ChevronLeft, ChevronRight } from "lucide-react";
+import { ShieldCheck, TriangleAlert, CircleCheck, ChevronLeft, ChevronRight, MousePointer2 } from "lucide-react";
 import type { Project } from "@/lib/types";
 import { LOCALES, FEATURE_SIZE } from "@/lib/presets";
 import { checkProject, currentSize } from "@/lib/rules";
-import { SlideCanvas, FeatureCanvas } from "./SlideCanvas";
+import { SlideCanvas, FeatureCanvas, type CanvasEdit } from "./SlideCanvas";
 
 interface Props {
   p: Project;
@@ -15,9 +15,10 @@ interface Props {
   onPick: (i: number) => void;
   onNav: (d: number) => void;
   onFiles: (f: FileList) => void;
+  edit: CanvasEdit;
 }
 
-export function Stage({ p, sel, tab, view, onPick, onNav, onFiles }: Props) {
+export function Stage({ p, sel, tab, view, onPick, onNav, onFiles, edit }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState({ w: 900, h: 600 });
   const [over, setOver] = useState(false);
@@ -41,12 +42,12 @@ export function Stage({ p, sel, tab, view, onPick, onNav, onFiles }: Props) {
   if (tab === "feature") content = <div className="slidewrap on"><FeatureCanvas p={p} width={Math.min(880, box.w - 80)} /></div>;
   else if (view === "single") {
     const w = Math.min(((H) * z.w) / z.h, box.w - 80);
-    content = <div className="slidewrap on"><SlideCanvas p={p} index={sel} width={w} size={z} /></div>;
+    content = <div className="slidewrap on"><SlideCanvas p={p} index={sel} width={w} size={z} edit={edit} /></div>;
   } else {
     const w = (H * z.w) / z.h;
     content = p.slides.map((s, i) => (
       <div key={s.id} className={`slidewrap ${i === sel ? "on" : ""}`} onClick={() => onPick(i)}>
-        <SlideCanvas p={p} index={i} width={w} size={z} />
+        <SlideCanvas p={p} index={i} width={w} size={z} edit={i === sel ? edit : undefined} />
       </div>
     ));
   }
@@ -56,7 +57,7 @@ export function Stage({ p, sel, tab, view, onPick, onNav, onFiles }: Props) {
       onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setOver(true); } }}
       onDragLeave={() => setOver(false)}
       onDrop={(e) => { if (e.dataTransfer.files.length) { e.preventDefault(); onFiles(e.dataTransfer.files); } setOver(false); }}>
-      <div className="stage" ref={ref}><div className="strip">{content}</div></div>
+      <div className="stage" ref={ref} onPointerDown={() => edit.onSel(null)}><div className="strip">{content}</div></div>
       <div className="foot">
         <div className={`check ${warns.length ? "warn" : "ok"}`} tabIndex={0}>
           {warns.length ? <TriangleAlert /> : <ShieldCheck />}
@@ -67,6 +68,7 @@ export function Stage({ p, sel, tab, view, onPick, onNav, onFiles }: Props) {
             ))}
           </div>
         </div>
+        {tab === "slide" && <span className="tip"><MousePointer2 />{edit.sel ? "Drag to move · ↑↓←→ nudge · Esc deselect" : "Click device or text to edit · double-click text to type"}</span>}
         <div className="nav">
           <button className="ibtn" onClick={() => onNav(-1)}><ChevronLeft /></button>
           <span className="mono">{tab === "feature" ? "Feature graphic" : `slide ${sel + 1} / ${p.slides.length}`}</span>
