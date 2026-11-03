@@ -130,7 +130,7 @@ export default function Editor() {
           onNav={(d) => { setTab("slide"); setSel((idx + d + n) % n); }}
           edit={{ sel: pick, onSel: setPick, onPatch: patchCur }} />
         <Inspector p={p} sel={idx} tab={tab} update={update} pick={pick}
-          onReplace={() => replaceInput.current?.click()} onReplaceFile={replace}
+          onReplace={() => replaceInput.current?.click()} onReplaceFile={replace} onFlash={flash}
           onDuplicate={() => { update((d) => { const s = [...d.slides]; s.splice(idx + 1, 0, { ...structuredClone(d.slides[idx]), id: uid() }); return { ...d, slides: s }; }); setSel(idx + 1); }} />
       </div>
       <input ref={addInput} type="file" accept="image/*" multiple hidden onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
