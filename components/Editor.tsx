@@ -11,6 +11,8 @@ import { Stage } from "./Stage";
 import { Inspector } from "./Inspector";
 import { SizeDialog, ExportDialog } from "./Dialogs";
 import type { CanvasPick } from "./SlideCanvas";
+import { ContextMenu, type MenuItem } from "./ContextMenu";
+import { CopyPlus, Trash2, ImageUp, RotateCcw, BringToFront, SendToBack } from "lucide-react";
 
 const readImg = (f: File) => new Promise<string>((r) => { const fr = new FileReader(); fr.onload = () => r(fr.result as string); fr.readAsDataURL(f); });
 
@@ -26,6 +28,7 @@ export default function Editor() {
   const [welcome, setWelcome] = useState(true); // tắt sau khi user upload hoặc chọn xem mẫu
   const [narrowOk, setNarrowOk] = useState(false); // màn hẹp: user bấm "vẫn mở" 
   const [pick, setPick] = useState<CanvasPick>(null); // phần tử đang chọn trên canvas
+  const [menu, setMenu] = useState<{ x: number; y: number; i: number; target: CanvasPick } | null>(null); // menu chuột phải (i = -1: feature)
   const addInput = useRef<HTMLInputElement>(null);
   const replaceInput = useRef<HTMLInputElement>(null);
   const n = p.slides.length;
@@ -46,6 +49,7 @@ export default function Editor() {
       const typing = t?.closest("input,textarea,select") || t?.isContentEditable;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") { if (typing) return; e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
       if (typing) return;
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "d") { e.preventDefault(); if (tab === "slide") dupAt(idx); return; }
       if (e.key === "Escape") return setPick(null);
       const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
       if (!dir) return;
@@ -68,6 +72,39 @@ export default function Editor() {
     toastT.current = setTimeout(() => setToast(null), withUndo ? 6000 : 2800);
   };
   const allSample = p.slides.every((s) => !s.img);
+
+  // --- Thao tác slide dùng chung (cột trái, menu chuột phải, phím tắt) ---
+  const dupAt = (at: number) => { update((d) => { const s = [...d.slides]; s.splice(at + 1, 0, { ...structuredClone(d.slides[at]), id: uid() }); return { ...d, slides: s }; }); setSel(at + 1); setTab("slide"); };
+  const delAt = (at: number) => {
+    if (n <= 1) return flash("Keep at least one slide");
+    update((d) => ({ ...d, slides: d.slides.filter((_, i) => i !== at) }));
+    setSel(at < idx ? idx - 1 : at === idx ? Math.min(idx, n - 2) : idx);
+    flash(`Slide ${at + 1} deleted`, true);
+  };
+
+  // Mục menu chuột phải: lớp trên/dưới (khi bấm trúng máy/chữ), đặt lại vị trí, rồi thao tác slide
+  const menuItems = (m: { i: number; target: CanvasPick }): MenuItem[] => {
+    const isF = m.i === -1, it = isF ? p.feature : p.slides[m.i];
+    if (!it) return [];
+    const patch = (x: Record<string, unknown>) => (isF ? patchFeature(x) : update((d) => ({ ...d, slides: d.slides.map((s, j) => (j === m.i ? { ...s, ...x } : s)) })));
+    const front = it.front ?? "text", moved = !!(it.dx || it.dy || it.tx || it.ty);
+    const name = m.target === "device" ? (isF ? "devices" : "device") : "text";
+    const items: MenuItem[] = [];
+    if (m.target) items.push(
+      { label: `Bring ${name} to front`, icon: <BringToFront />, disabled: front === m.target, onClick: () => patch({ front: m.target }) },
+      { label: `Send ${name} to back`, icon: <SendToBack />, disabled: front !== m.target, onClick: () => patch({ front: m.target === "device" ? "text" : "device" }) },
+      "sep",
+    );
+    items.push({ label: "Reset position", icon: <RotateCcw />, disabled: !moved, onClick: () => patch({ dx: 0, dy: 0, tx: 0, ty: 0 }) });
+    if (!isF) items.push(
+      "sep",
+      { label: "Duplicate slide", icon: <CopyPlus />, kbd: "Ctrl D", onClick: () => dupAt(m.i) },
+      { label: (it as Slide).img ? "Replace screenshot…" : "Upload screenshot…", icon: <ImageUp />, onClick: () => { setSel(m.i); replaceInput.current?.click(); } },
+      "sep",
+      { label: "Delete slide", icon: <Trash2 />, danger: true, disabled: n <= 1, onClick: () => delAt(m.i) },
+    );
+    return items;
+  };
 
   const addFiles = async (files: FileList) => {
     const imgs = await Promise.all([...files].filter((f) => f.type.startsWith("image/")).map(readImg));
@@ -105,7 +142,7 @@ export default function Editor() {
 
   return (
     <div className="app">
-      <TopBar p={p} save={save} view={view} dark={dark} canUndo={canUndo} canRedo={canRedo}
+      <TopBar p={p} save={save} view={view} viewLocked={tab === "feature"} dark={dark} canUndo={canUndo} canRedo={canRedo}
         onStore={(store) => { update((d) => ({ ...d, store, sizeId: sizesOf(d, store)[0].id })); if (store === "ios") setTab("slide"); }}
         onSize={(sizeId) => update((d) => ({ ...d, sizeId }))}
         onLoc={(loc) => update((d) => ({ ...d, loc }))}
@@ -116,28 +153,25 @@ export default function Editor() {
           onPick={(i) => { setSel(i); setTab("slide"); }}
           onFeature={() => setTab("feature")}
           onMove={(from, to) => { update((d) => { const s = [...d.slides]; const [m] = s.splice(from, 1); s.splice(to, 0, m); return { ...d, slides: s }; }); setSel(to); }}
-          onDelete={(at) => {
-            if (n <= 1) return flash("Keep at least one slide");
-            update((d) => ({ ...d, slides: d.slides.filter((_, i) => i !== at) }));
-            setSel(at < idx ? idx - 1 : at === idx ? Math.min(idx, n - 2) : idx);
-            flash(`Slide ${at + 1} deleted`, true);
-          }}
-          onDuplicate={(at) => { update((d) => { const s = [...d.slides]; s.splice(at + 1, 0, { ...structuredClone(d.slides[at]), id: uid() }); return { ...d, slides: s }; }); setSel(at + 1); setTab("slide"); }}
+          onDelete={delAt} onDuplicate={dupAt}
+          onMenu={(x, y, i) => { setSel(i); setTab("slide"); setMenu({ x, y, i, target: null }); }}
           onUpload={() => addInput.current?.click()} />
         <Stage p={p} sel={idx} tab={tab} view={view} onFiles={addFiles}
           welcome={welcome && fresh && allSample} onUpload={() => addInput.current?.click()} onSkipWelcome={() => setWelcome(false)}
           onPick={(i) => { setSel(i); setTab("slide"); }}
           onNav={(d) => { setTab("slide"); setSel((idx + d + n) % n); }}
-          edit={{ sel: pick, onSel: setPick, onPatch: patchCur }} />
+          edit={{ sel: pick, onSel: setPick, onPatch: patchCur }}
+          onMenu={(x, y, i, target) => setMenu({ x, y, i, target })} />
         <Inspector p={p} sel={idx} tab={tab} update={update} pick={pick}
           onReplace={() => replaceInput.current?.click()} onReplaceFile={replace} onFlash={flash}
-          onDuplicate={() => { update((d) => { const s = [...d.slides]; s.splice(idx + 1, 0, { ...structuredClone(d.slides[idx]), id: uid() }); return { ...d, slides: s }; }); setSel(idx + 1); }} />
+          onDuplicate={() => dupAt(idx)} />
       </div>
       <input ref={addInput} type="file" accept="image/*" multiple hidden onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
       <input ref={replaceInput} type="file" accept="image/*" hidden onChange={(e) => { replace(e.target.files?.[0]); e.target.value = ""; }} />
       {dialog === "size" && <SizeDialog p={p} onAdd={addSize} onClose={() => setDialog("")}
         onRemove={(id) => update((d) => { const customSizes = d.customSizes.filter((z) => z.id !== id); return { ...d, customSizes, sizeId: d.sizeId === id ? sizesOf({ ...d, customSizes }, d.store)[0].id : d.sizeId }; })} />}
       {dialog === "export" && <ExportDialog p={p} onClose={() => setDialog("")} />}
+      {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems(menu)} onClose={() => setMenu(null)} />}
       {toast && (
         <div className="toast" role="status">
           {toast.msg}

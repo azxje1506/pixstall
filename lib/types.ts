@@ -32,6 +32,7 @@ export interface Slide extends Tilt3D {
   // Dời vị trí khi kéo trên canvas (em = % bề ngang slide); thiếu = 0 (dự án cũ)
   dx?: number; dy?: number; // máy
   tx?: number; ty?: number; // khối chữ
+  front?: "text" | "device"; // phần nào nằm trên (mặc định chữ trên máy)
 }
 
 export type FrameStyle = "auto" | "iphone" | "pixel" | "none";
@@ -65,6 +66,7 @@ export interface Feature extends Tilt3D {
   scale: number;
   dx?: number; dy?: number; // dời cụm máy (em)
   tx?: number; ty?: number; // dời khối icon + chữ (em)
+  front?: "text" | "device";
 }
 
 export interface Project {

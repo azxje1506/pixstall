@@ -20,9 +20,10 @@ interface Props {
   onDelete: (i: number) => void;
   onDuplicate: (i: number) => void;
   onUpload: () => void;
+  onMenu: (x: number, y: number, i: number) => void; // chuột phải trên hàng
 }
 
-export function SlideList({ p, sel, tab, onPick, onFeature, onMove, onDelete, onDuplicate, onUpload }: Props) {
+export function SlideList({ p, sel, tab, onPick, onFeature, onMove, onDelete, onDuplicate, onUpload, onMenu }: Props) {
   const z = currentSize(p);
   const [drag, setDrag] = useState<number | null>(null);
   const tw = Math.min(TW, (TH * z.w) / z.h); // co slide vừa khung, giữ tỉ lệ
@@ -41,7 +42,8 @@ export function SlideList({ p, sel, tab, onPick, onFeature, onMove, onDelete, on
         {p.slides.map((s, i) => (
           <div key={s.id} draggable onDragStart={() => setDrag(i)} onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => { e.preventDefault(); if (drag !== null && drag !== i) onMove(drag, i); setDrag(null); }}
-            className={`item ${tab === "slide" && i === sel ? "on" : ""} ${i >= mx ? "over" : ""}`} onClick={() => onPick(i)}>
+            className={`item ${tab === "slide" && i === sel ? "on" : ""} ${i >= mx ? "over" : ""}`} onClick={() => onPick(i)}
+            onContextMenu={(e) => { e.preventDefault(); onMenu(e.clientX, e.clientY, i); }}>
             <GripVertical className="grip" />
             <div className="thumb" style={{ width: TW, height: TH }}>
               <div className="thumb-in"><SlideCanvas p={p} index={i} width={tw} size={z} /></div>

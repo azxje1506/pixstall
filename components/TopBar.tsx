@@ -10,6 +10,7 @@ interface Props {
   p: Project;
   save: SaveState;
   view: "strip" | "single";
+  viewLocked?: boolean; // Feature graphic chỉ có 1 ảnh → khoá chọn kiểu xem
   dark: boolean;
   canUndo: boolean;
   canRedo: boolean;
@@ -61,10 +62,12 @@ export function TopBar(x: Props) {
             {Object.entries(LOCALES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
         </label>
-        <Seg value={x.view} onChange={x.onView} options={[
-          { v: "strip", label: "Store view", icon: <GalleryHorizontal /> },
-          { v: "single", label: "Single", icon: <Square /> },
-        ]} />
+        <div className={x.viewLocked ? "locked" : ""} title={x.viewLocked ? "Feature graphic is a single image" : undefined}>
+          <Seg value={x.view} onChange={x.onView} options={[
+            { v: "strip", label: "Store view", icon: <GalleryHorizontal /> },
+            { v: "single", label: "Single", icon: <Square /> },
+          ]} />
+        </div>
         <button className="ibtn" title="Undo (Ctrl+Z)" aria-label="Undo" disabled={!x.canUndo} onClick={x.onUndo}><Undo2 /></button>
         <button className="ibtn" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled={!x.canRedo} onClick={x.onRedo}><Redo2 /></button>
       </div>

@@ -61,7 +61,7 @@ function DeviceControls({ v, scaleRange, onChange, tag, hot, right, label = "Dev
       </div>
       <Slider label="Lean X" value={v.rx} min={-45} max={45} unit="°" onChange={(rx) => onChange({ rx }, tag + "rx")} />
       <Slider label="Turn Y" value={v.ry} min={-45} max={45} unit="°" onChange={(ry) => onChange({ ry }, tag + "ry")} />
-      <Slider label="Spin Z" value={v.rz} min={-30} max={30} unit="°" onChange={(rz) => onChange({ rz }, tag + "rz")} />
+      <Slider label="Spin Z" value={v.rz} min={-45} max={45} unit="°" onChange={(rz) => onChange({ rz }, tag + "rz")} />
     </Group>
   );
 }
