@@ -39,7 +39,7 @@ export function Stage({ p, sel, tab, view, onPick, onNav, onFiles, edit }: Props
   const storeName = p.store === "ios" ? "App Store" : "Google Play";
 
   let content;
-  if (tab === "feature") content = <div className="slidewrap on"><FeatureCanvas p={p} width={Math.min(880, box.w - 80)} /></div>;
+  if (tab === "feature") content = <div className="slidewrap on"><FeatureCanvas p={p} width={Math.min(880, box.w - 80)} edit={edit} /></div>;
   else if (view === "single") {
     const w = Math.min(((H) * z.w) / z.h, box.w - 80);
     content = <div className="slidewrap on"><SlideCanvas p={p} index={sel} width={w} size={z} edit={edit} /></div>;
@@ -68,7 +68,7 @@ export function Stage({ p, sel, tab, view, onPick, onNav, onFiles, edit }: Props
             ))}
           </div>
         </div>
-        {tab === "slide" && <span className="tip"><MousePointer2 />{edit.sel ? "Drag to move · ↑↓←→ nudge · Esc deselect" : "Click device or text to edit · double-click text to type"}</span>}
+        {<span className="tip"><MousePointer2 />{edit.sel ? "Drag to move · ↑↓←→ nudge · Esc deselect" : "Click device or text to edit · double-click text to type"}</span>}
         <div className="nav">
           <button className="ibtn" onClick={() => onNav(-1)}><ChevronLeft /></button>
           <span className="mono">{tab === "feature" ? "Feature graphic" : `slide ${sel + 1} / ${p.slides.length}`}</span>

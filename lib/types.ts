@@ -63,6 +63,8 @@ export interface Feature extends Tilt3D {
   icon: string;
   device: boolean;
   scale: number;
+  dx?: number; dy?: number; // dời cụm máy (em)
+  tx?: number; ty?: number; // dời khối icon + chữ (em)
 }
 
 export interface Project {

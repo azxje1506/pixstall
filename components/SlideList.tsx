@@ -1,7 +1,7 @@
-// Cột trái (kiểu panel Layers của Framer): danh sách slide, kéo thả sắp xếp, đếm n/max, Feature graphic + vùng thả ảnh Upload
+// Cột trái (kiểu panel Layers của Framer): danh sách slide, kéo thả sắp xếp, đếm n/max, Feature graphic; nút + để thêm slide từ ảnh
 // Thumbnail nằm trong khung CỐ ĐỊNH 40×64 px, slide được co vừa (contain) → hàng nào cũng cao bằng nhau dù iPhone hay iPad
 import { useState } from "react";
-import { GripVertical, Trash, Upload, Image as ImageIcon } from "lucide-react";
+import { GripVertical, Trash, Plus, Image as ImageIcon } from "lucide-react";
 import type { Project } from "@/lib/types";
 import { LIMIT } from "@/lib/presets";
 import { currentSize, textOf } from "@/lib/rules";
@@ -18,16 +18,13 @@ interface Props {
   onMove: (from: number, to: number) => void;
   onDelete: () => void;
   onUpload: () => void;
-  onFiles: (f: FileList) => void;
 }
 
-export function SlideList({ p, sel, tab, onPick, onFeature, onMove, onDelete, onUpload, onFiles }: Props) {
+export function SlideList({ p, sel, tab, onPick, onFeature, onMove, onDelete, onUpload }: Props) {
   const z = currentSize(p);
   const [drag, setDrag] = useState<number | null>(null);
-  const [hot, setHot] = useState(false); // đang kéo file ngang dropzone
   const tw = Math.min(TW, (TH * z.w) / z.h); // co slide vừa khung, giữ tỉ lệ
   const [mn, mx] = LIMIT[p.store];
-  const empty = p.slides.every((s) => !s.img);
 
   return (
     <aside className="left">
@@ -36,6 +33,7 @@ export function SlideList({ p, sel, tab, onPick, onFeature, onMove, onDelete, on
         <span className="row g4">
           <span className={`count ${p.slides.length > mx || p.slides.length < mn ? "bad" : ""}`}>{p.slides.length}/{mx}</span>
           <button className="ibtn" title="Delete selected slide" onClick={onDelete}><Trash /></button>
+          <button className="ibtn" title="Add screenshots" onClick={onUpload}><Plus /></button>
         </span>
       </div>
       <div className="list">
@@ -67,18 +65,6 @@ export function SlideList({ p, sel, tab, onPick, onFeature, onMove, onDelete, on
             </div>
           </>
         )}
-      </div>
-      {/* Dropzone: bấm để chọn file hoặc thả ảnh vào */}
-      <div className="listfoot">
-        <button className={`dropzone ${hot ? "hot" : ""} ${empty ? "pulse" : ""}`} onClick={onUpload}
-          onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); e.stopPropagation(); setHot(true); } }}
-          onDragLeave={() => setHot(false)}
-          onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setHot(false); if (e.dataTransfer.files.length) onFiles(e.dataTransfer.files); }}>
-          <span className="dz-ico"><Upload /></span>
-          <span className="dz-t">{hot ? "Drop to add slides" : "Upload screenshots"}</span>
-          <span className="dz-s">Drag & drop or click · PNG, JPG</span>
-          <span className="dz-s">{z.w}×{z.h} works best</span>
-        </button>
       </div>
     </aside>
   );

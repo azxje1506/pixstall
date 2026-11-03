@@ -136,18 +136,10 @@ input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border: 0; bord
 .shot-t { font-weight: 600; }
 .shot-meta .row { justify-content: flex-start; margin-top: 4px; }
 
-/* --- Cột trái: số đếm + dropzone Upload --- */
+/* --- Cột trái: số đếm --- */
 .count { font-family: var(--font-mono); font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--soft); color: var(--muted); }
 .count.bad { background: #FEF3C7; color: #92400E; }
 .tag.soft { background: var(--soft); color: var(--muted); }
-.dropzone { width: 100%; display: grid; justify-items: center; gap: 4px; padding: 16px 12px; border-radius: 12px; text-align: center;
-  border: 1.5px dashed color-mix(in srgb, var(--accent) 45%, var(--line)); background: color-mix(in srgb, var(--accent) 4%, transparent); transition: background .15s, border-color .15s; }
-.dropzone:hover, .dropzone.hot { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
-.dropzone.pulse { animation: dzpulse 2.4s ease-in-out infinite; }
-@keyframes dzpulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent); } }
-.dz-ico { width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: #fff; display: grid; place-items: center; margin-bottom: 4px; }
-.dz-t { font-weight: 600; font-size: 13px; }
-.dz-s { font-size: 11px; color: var(--muted); }
 
 /* --- Sửa trực tiếp trên canvas: khung chọn, nút đổi cỡ, gõ chữ --- */
 .ed-hit { cursor: move; outline: 1px solid transparent; outline-offset: 2px; transition: outline-color .1s; }
@@ -155,6 +147,10 @@ input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border: 0; bord
 .ed-hit.sel { outline: 2px solid var(--accent); }
 .ed-handle { position: absolute; right: -6px; bottom: -6px; width: 12px; height: 12px; border-radius: 3px; background: #fff; border: 2px solid var(--accent); cursor: nwse-resize; z-index: 10; }
 .ed-hit [contenteditable=true] { cursor: text; outline: 0; background: rgba(255,255,255,.12); border-radius: 4px; }
+.ed-hit img, .ed-hit .scr { -webkit-user-drag: none; user-select: none; }
+.ed-guide { position: absolute; z-index: 20; pointer-events: none; background: #FF3D7F; }
+.ed-guide.v { top: 0; bottom: 0; width: 1px; transform: translateX(-.5px); }
+.ed-guide.h { left: 0; right: 0; height: 1px; transform: translateY(-.5px); }
 body.dragging, body.dragging * { cursor: grabbing !important; user-select: none; }
 .tip { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); }
 

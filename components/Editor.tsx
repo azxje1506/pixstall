@@ -2,7 +2,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useProject } from "@/lib/useProject";
-import type { SizePreset, Slide } from "@/lib/types";
+import type { SizePreset, Slide, Feature } from "@/lib/types";
 import { uid } from "@/lib/presets";
 import { sizesOf } from "@/lib/rules";
 import { TopBar } from "./TopBar";
@@ -33,6 +33,8 @@ export default function Editor() {
 
   // Sửa slide đang chọn (dùng chung cho canvas + phím nhích)
   const patchSlide = (patch: Partial<Slide>, tag = "") => update((d) => ({ ...d, slides: d.slides.map((s, i) => (i === idx ? { ...s, ...patch } : s)) }), tag);
+  const patchFeature = (patch: Partial<Feature>, tag = "") => update((d) => ({ ...d, feature: { ...d.feature, ...patch } }), tag);
+  const patchCur = (patch: Record<string, unknown>, tag = "") => (tab === "feature" ? patchFeature(patch, tag) : patchSlide(patch, tag));
 
   // Phím tắt: Ctrl+Z / Ctrl+Shift+Z; có phần tử chọn thì mũi tên nhích (Shift = 2em), Esc bỏ chọn; không thì ←/→ lật slide
   useEffect(() => {
@@ -44,12 +46,12 @@ export default function Editor() {
       if (e.key === "Escape") return setPick(null);
       const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
       if (!dir) return;
-      if (pick && tab === "slide") {
+      if (pick) {
         e.preventDefault();
-        const st = e.shiftKey ? 2 : 0.5, s = p.slides[idx];
+        const st = e.shiftKey ? 2 : 0.5, s = tab === "feature" ? p.feature : p.slides[idx];
         const [kx, ky] = pick === "device" ? ["dx", "dy"] as const : ["tx", "ty"] as const;
         const r = (v: number) => Math.round(v * 10) / 10;
-        patchSlide({ [kx]: r((s[kx] ?? 0) + dir[0] * st), [ky]: r((s[ky] ?? 0) + dir[1] * st) }, "nudge");
+        patchCur({ [kx]: r((s[kx] ?? 0) + dir[0] * st), [ky]: r((s[ky] ?? 0) + dir[1] * st) }, "nudge");
       } else if (dir[0]) { setTab("slide"); setSel((x) => (x + dir[0] + n) % n); }
     };
     window.addEventListener("keydown", onKey);
@@ -93,11 +95,11 @@ export default function Editor() {
           onFeature={() => setTab("feature")}
           onMove={(from, to) => { update((d) => { const s = [...d.slides]; const [m] = s.splice(from, 1); s.splice(to, 0, m); return { ...d, slides: s }; }); setSel(to); }}
           onDelete={() => { if (n <= 1) return flash("Keep at least one slide"); update((d) => ({ ...d, slides: d.slides.filter((_, i) => i !== idx) })); setSel(Math.max(0, idx - 1)); }}
-          onUpload={() => addInput.current?.click()} onFiles={addFiles} />
+          onUpload={() => addInput.current?.click()} />
         <Stage p={p} sel={idx} tab={tab} view={view} onFiles={addFiles}
           onPick={(i) => { setSel(i); setTab("slide"); }}
           onNav={(d) => { setTab("slide"); setSel((idx + d + n) % n); }}
-          edit={{ sel: pick, onSel: setPick, onPatch: patchSlide }} />
+          edit={{ sel: pick, onSel: setPick, onPatch: patchCur }} />
         <Inspector p={p} sel={idx} tab={tab} update={update} pick={pick}
           onReplace={() => replaceInput.current?.click()} onReplaceFile={replace}
           onDuplicate={() => { update((d) => { const s = [...d.slides]; s.splice(idx + 1, 0, { ...structuredClone(d.slides[idx]), id: uid() }); return { ...d, slides: s }; }); setSel(idx + 1); }} />

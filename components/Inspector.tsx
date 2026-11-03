@@ -145,6 +145,16 @@ export function Inspector({ p, sel, tab, update, pick, onReplace, onReplaceFile,
             { v: "on", label: "Show devices", icon: <Smartphone /> }, { v: "off", label: "Hide", icon: <EyeOff /> },
           ]} />
         </Group>
+        <Group title="Position" right={f.dx || f.dy || f.tx || f.ty ? <button className="ibtn" title="Reset positions" onClick={() => setFeature({ dx: 0, dy: 0, tx: 0, ty: 0 })}><RotateCcw /></button> : <Move className="muted" />}>
+          {f.device && <Prop label="Devices" hot={pick === "device"}>
+            <Num prefix="X" value={f.dx ?? 0} step={0.5} onChange={(dx) => setFeature({ dx }, "fdx")} />
+            <Num prefix="Y" value={f.dy ?? 0} step={0.5} onChange={(dy) => setFeature({ dy }, "fdy")} />
+          </Prop>}
+          <Prop label="Text" hot={pick === "text"}>
+            <Num prefix="X" value={f.tx ?? 0} step={0.5} onChange={(tx) => setFeature({ tx }, "ftx")} />
+            <Num prefix="Y" value={f.ty ?? 0} step={0.5} onChange={(ty) => setFeature({ ty }, "fty")} />
+          </Prop>
+        </Group>
         {f.device && <TiltControls v={f} scale={f.scale} scaleRange={[12, 30]} tag="f" onChange={(patch, tag) => setFeature(patch, tag)} />}
         <div className="divider"><Palette />Theme — shared with screenshots</div>
         <ThemeControls t={p.theme} set={setTheme} />
