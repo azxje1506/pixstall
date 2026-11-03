@@ -1,7 +1,8 @@
 // Cột trái (kiểu panel Layers của Framer): danh sách slide, kéo thả sắp xếp, đếm n/max, Feature graphic; nút + để thêm slide từ ảnh
+// Nhân bản / xoá nằm trên TỪNG hàng (hiện khi rê chuột hoặc hàng đang chọn); xoá có toast Hoàn tác ở Editor
 // Thumbnail nằm trong khung CỐ ĐỊNH 40×64 px, slide được co vừa (contain) → hàng nào cũng cao bằng nhau dù iPhone hay iPad
 import { useState } from "react";
-import { GripVertical, Trash, Plus, Image as ImageIcon } from "lucide-react";
+import { GripVertical, Trash2, Plus, CopyPlus, Image as ImageIcon } from "lucide-react";
 import type { Project } from "@/lib/types";
 import { LIMIT } from "@/lib/presets";
 import { currentSize, textOf } from "@/lib/rules";
@@ -16,11 +17,12 @@ interface Props {
   onPick: (i: number) => void;
   onFeature: () => void;
   onMove: (from: number, to: number) => void;
-  onDelete: () => void;
+  onDelete: (i: number) => void;
+  onDuplicate: (i: number) => void;
   onUpload: () => void;
 }
 
-export function SlideList({ p, sel, tab, onPick, onFeature, onMove, onDelete, onUpload }: Props) {
+export function SlideList({ p, sel, tab, onPick, onFeature, onMove, onDelete, onDuplicate, onUpload }: Props) {
   const z = currentSize(p);
   const [drag, setDrag] = useState<number | null>(null);
   const tw = Math.min(TW, (TH * z.w) / z.h); // co slide vừa khung, giữ tỉ lệ
@@ -32,8 +34,7 @@ export function SlideList({ p, sel, tab, onPick, onFeature, onMove, onDelete, on
         <span className="ttl">Screenshots</span>
         <span className="row g4">
           <span className={`count ${p.slides.length > mx || p.slides.length < mn ? "bad" : ""}`}>{p.slides.length}/{mx}</span>
-          <button className="ibtn" title="Delete selected slide" onClick={onDelete}><Trash /></button>
-          <button className="ibtn" title="Add screenshots" onClick={onUpload}><Plus /></button>
+          <button className="ibtn" title="Add screenshots" aria-label="Add screenshots" onClick={onUpload}><Plus /></button>
         </span>
       </div>
       <div className="list">
@@ -52,6 +53,10 @@ export function SlideList({ p, sel, tab, onPick, onFeature, onMove, onDelete, on
                 {p.loc !== "en" && !s.t[p.loc] && <span className="tag">EN</span>}
               </div>
               <div className="sub">{textOf(s, p.loc)[0] || "Untitled"}</div>
+            </div>
+            <div className="rowact" onClick={(e) => e.stopPropagation()}>
+              <button className="ibtn" title="Duplicate" aria-label={`Duplicate slide ${i + 1}`} onClick={() => onDuplicate(i)}><CopyPlus /></button>
+              <button className="ibtn danger" title="Delete" aria-label={`Delete slide ${i + 1}`} onClick={() => onDelete(i)}><Trash2 /></button>
             </div>
           </div>
         ))}

@@ -15,13 +15,16 @@ import type { CanvasPick } from "./SlideCanvas";
 const readImg = (f: File) => new Promise<string>((r) => { const fr = new FileReader(); fr.onload = () => r(fr.result as string); fr.readAsDataURL(f); });
 
 export default function Editor() {
-  const { p, update, undo, redo, canUndo, canRedo } = useProject();
+  const { p, update, undo, redo, canUndo, canRedo, save, fresh } = useProject();
   const [sel, setSel] = useState(0);
   const [tab, setTab] = useState<"slide" | "feature">("slide");
   const [view, setView] = useState<"strip" | "single">("strip");
   const [dark, setDark] = useState(false);
   const [dialog, setDialog] = useState<"" | "size" | "export">("");
-  const [toast, setToast] = useState("");
+  const [toast, setToast] = useState<{ msg: string; undo?: boolean } | null>(null);
+  const toastT = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [welcome, setWelcome] = useState(true); // tắt sau khi user upload hoặc chọn xem mẫu
+  const [narrowOk, setNarrowOk] = useState(false); // màn hẹp: user bấm "vẫn mở" 
   const [pick, setPick] = useState<CanvasPick>(null); // phần tử đang chọn trên canvas
   const addInput = useRef<HTMLInputElement>(null);
   const replaceInput = useRef<HTMLInputElement>(null);
@@ -58,15 +61,34 @@ export default function Editor() {
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  const flash = (m: string) => { setToast(m); setTimeout(() => setToast(""), 2800); };
+  // Toast: có nút Hoàn tác khi undo=true (sống lâu hơn, 6s)
+  const flash = (msg: string, withUndo = false) => {
+    clearTimeout(toastT.current);
+    setToast({ msg, undo: withUndo });
+    toastT.current = setTimeout(() => setToast(null), withUndo ? 6000 : 2800);
+  };
+  const allSample = p.slides.every((s) => !s.img);
 
   const addFiles = async (files: FileList) => {
     const imgs = await Promise.all([...files].filter((f) => f.type.startsWith("image/")).map(readImg));
     if (!imgs.length) return;
-    const fresh: Slide[] = imgs.map((img, k) => ({ id: uid(), t: { en: ["Your headline here", "Describe this screen"] }, layout: "center", scale: 76, rx: 0, ry: 0, rz: 0, img, mock: n + k }));
-    update((d) => ({ ...d, slides: [...d.slides, ...fresh] }));
-    setSel(n + fresh.length - 1);
+    setWelcome(false);
     setTab("slide");
+    // Dự án còn toàn màn mẫu → đổ ảnh vào các slide mẫu theo thứ tự (giữ chữ + layout đẹp sẵn), dư thì thêm slide mới
+    if (allSample) {
+      update((d) => {
+        const slides = d.slides.map((s, i) => (imgs[i] ? { ...s, img: imgs[i] } : s));
+        const extra: Slide[] = imgs.slice(d.slides.length).map((img, k) => ({ id: uid(), t: { en: ["Your headline here", "Describe this screen"] }, layout: "center", scale: 76, rx: 0, ry: 0, rz: 0, img, mock: d.slides.length + k }));
+        return { ...d, slides: [...slides, ...extra] };
+      });
+      setSel(0);
+      flash(`Placed ${imgs.length} screenshot${imgs.length > 1 ? "s" : ""} into the sample slides`, true);
+      return;
+    }
+    const added: Slide[] = imgs.map((img, k) => ({ id: uid(), t: { en: ["Your headline here", "Describe this screen"] }, layout: "center", scale: 76, rx: 0, ry: 0, rz: 0, img, mock: n + k }));
+    update((d) => ({ ...d, slides: [...d.slides, ...added] }));
+    setSel(n + added.length - 1);
+    flash(`Added ${added.length} slide${added.length > 1 ? "s" : ""}`, true);
   };
 
   const replace = async (f?: File) => {
@@ -83,7 +105,7 @@ export default function Editor() {
 
   return (
     <div className="app">
-      <TopBar p={p} view={view} dark={dark} canUndo={canUndo} canRedo={canRedo}
+      <TopBar p={p} save={save} view={view} dark={dark} canUndo={canUndo} canRedo={canRedo}
         onStore={(store) => { update((d) => ({ ...d, store, sizeId: sizesOf(d, store)[0].id })); if (store === "ios") setTab("slide"); }}
         onSize={(sizeId) => update((d) => ({ ...d, sizeId }))}
         onLoc={(loc) => update((d) => ({ ...d, loc }))}
@@ -94,9 +116,16 @@ export default function Editor() {
           onPick={(i) => { setSel(i); setTab("slide"); }}
           onFeature={() => setTab("feature")}
           onMove={(from, to) => { update((d) => { const s = [...d.slides]; const [m] = s.splice(from, 1); s.splice(to, 0, m); return { ...d, slides: s }; }); setSel(to); }}
-          onDelete={() => { if (n <= 1) return flash("Keep at least one slide"); update((d) => ({ ...d, slides: d.slides.filter((_, i) => i !== idx) })); setSel(Math.max(0, idx - 1)); }}
+          onDelete={(at) => {
+            if (n <= 1) return flash("Keep at least one slide");
+            update((d) => ({ ...d, slides: d.slides.filter((_, i) => i !== at) }));
+            setSel(at < idx ? idx - 1 : at === idx ? Math.min(idx, n - 2) : idx);
+            flash(`Slide ${at + 1} deleted`, true);
+          }}
+          onDuplicate={(at) => { update((d) => { const s = [...d.slides]; s.splice(at + 1, 0, { ...structuredClone(d.slides[at]), id: uid() }); return { ...d, slides: s }; }); setSel(at + 1); setTab("slide"); }}
           onUpload={() => addInput.current?.click()} />
         <Stage p={p} sel={idx} tab={tab} view={view} onFiles={addFiles}
+          welcome={welcome && fresh && allSample} onUpload={() => addInput.current?.click()} onSkipWelcome={() => setWelcome(false)}
           onPick={(i) => { setSel(i); setTab("slide"); }}
           onNav={(d) => { setTab("slide"); setSel((idx + d + n) % n); }}
           edit={{ sel: pick, onSel: setPick, onPatch: patchCur }} />
@@ -109,7 +138,22 @@ export default function Editor() {
       {dialog === "size" && <SizeDialog p={p} onAdd={addSize} onClose={() => setDialog("")}
         onRemove={(id) => update((d) => { const customSizes = d.customSizes.filter((z) => z.id !== id); return { ...d, customSizes, sizeId: d.sizeId === id ? sizesOf({ ...d, customSizes }, d.store)[0].id : d.sizeId }; })} />}
       {dialog === "export" && <ExportDialog p={p} onClose={() => setDialog("")} />}
-      {toast && <div className="toast">{toast}</div>}
+      {toast && (
+        <div className="toast" role="status">
+          {toast.msg}
+          {toast.undo && <button onClick={() => { undo(); setToast(null); }}>Undo</button>}
+        </div>
+      )}
+      {/* Màn hẹp (<900px): editor cần chuột + màn rộng */}
+      {!narrowOk && (
+        <div className="narrow">
+          <div className="logo"><span className="mark" />Pixstall</div>
+          <h1>Best on a bigger screen</h1>
+          <p>Pixstall is a desktop editor for App Store &amp; Google Play screenshots. Open it on a laptop or desktop to drag, tilt and export.</p>
+          <button className="primary" onClick={() => { navigator.clipboard?.writeText(location.href); flash("Link copied"); }}>Copy link</button>
+          <button className="ghost" onClick={() => setNarrowOk(true)}>Open anyway</button>
+        </div>
+      )}
     </div>
   );
 }

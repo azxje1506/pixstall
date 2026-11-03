@@ -1,11 +1,13 @@
-// Hook trạng thái dự án: undo/redo (gộp các thay đổi liên tiếp cùng nhãn, vd kéo slider) + tự lưu localStorage
+// Hook trạng thái dự án: undo/redo (gộp các thay đổi liên tiếp cùng nhãn, vd kéo slider) + tự lưu IndexedDB
+// `save` = trạng thái lưu cho thanh trên: loading → saved / saving / error
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Project } from "./types";
 import { sampleProject } from "./presets";
+import { loadProject, saveProject, askPersist } from "./storage";
 
-const KEY = "pixstall:project:v1";
 const MAX = 60;
+export type SaveState = "loading" | "saved" | "saving" | "error";
 
 export function useProject() {
   const [p, setP] = useState<Project>(() => sampleProject());
@@ -13,22 +15,26 @@ export function useProject() {
   const future = useRef<Project[]>([]);
   const last = useRef<{ tag: string; at: number }>({ tag: "", at: 0 });
   const [, force] = useState(0);
+  const [save, setSave] = useState<SaveState>("loading");
   const loaded = useRef(false);
+  const [fresh, setFresh] = useState(false); // true = chưa từng có dự án lưu (lần đầu vào)
 
   // Nạp bản đã lưu (chạy 1 lần phía client)
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(KEY);
-      if (raw) setP({ ...sampleProject(), ...JSON.parse(raw) });
-    } catch {}
-    loaded.current = true;
+    loadProject().then((got) => {
+      if (got) setP({ ...sampleProject(), ...got }); else setFresh(true);
+      loaded.current = true;
+      setSave("saved");
+      askPersist();
+    });
   }, []);
 
-  // Tự lưu (ảnh dataURL lớn có thể vượt quota → bỏ qua lỗi)
+  // Tự lưu sau 400ms ngừng sửa; lỗi thì báo "error" (không nuốt lỗi như trước)
   useEffect(() => {
     if (!loaded.current) return;
+    setSave("saving");
     const id = setTimeout(() => {
-      try { localStorage.setItem(KEY, JSON.stringify(p)); } catch {}
+      saveProject(p).then(() => setSave("saved")).catch(() => setSave("error"));
     }, 400);
     return () => clearTimeout(id);
   }, [p]);
@@ -67,5 +73,5 @@ export function useProject() {
 
   const reset = useCallback(() => update(() => sampleProject()), [update]);
 
-  return { p, update, undo, redo, reset, canUndo: past.current.length > 0, canRedo: future.current.length > 0 };
+  return { p, update, undo, redo, reset, save, fresh, canUndo: past.current.length > 0, canRedo: future.current.length > 0 };
 }

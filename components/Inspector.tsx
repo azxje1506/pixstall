@@ -81,7 +81,7 @@ function ThemeControls({ t, set }: { t: Theme; set: (patch: Partial<Theme>, tag?
               </>}
           <div className="swatches">
             {GRADIENTS.map(([a, b]) => (
-              <button key={a} style={{ background: `linear-gradient(135deg,${a},${b})` }} onClick={() => set({ c1: a, c2: b, ...(t.bg === "color" ? { bg: "gradient" as Bg } : {}) })} />
+              <button key={a} title={`Gradient ${a} → ${b}`} aria-label={`Gradient ${a} to ${b}`} style={{ background: `linear-gradient(135deg,${a},${b})` }} onClick={() => set({ c1: a, c2: b, ...(t.bg === "color" ? { bg: "gradient" as Bg } : {}) })} />
             ))}
           </div>
         </div>
@@ -138,7 +138,7 @@ export function Inspector({ p, sel, tab, update, pick, onReplace, onReplaceFile,
           <span className="lab">Icon</span>
           <div className="icons">
             {Object.entries(FEATURE_ICONS).map(([k, I]) => (
-              <button key={k} className={f.icon === k ? "on" : ""} onClick={() => setFeature({ icon: k })}><I /></button>
+              <button key={k} title={k} aria-label={`Icon ${k}`} className={f.icon === k ? "on" : ""} onClick={() => setFeature({ icon: k })}><I /></button>
             ))}
           </div>
           <Seg full value={f.device ? "on" : "off"} onChange={(v) => setFeature({ device: v === "on" })} options={[

@@ -19,7 +19,7 @@ input, select, textarea { font: inherit; color: var(--text); }
 
 /* --- Khung 3 cột --- */
 .app { display: grid; grid-template-rows: 52px 1fr; height: 100vh; }
-.body { display: grid; grid-template-columns: 248px 1fr 320px; min-height: 0; }
+.body { display: grid; grid-template-columns: 248px minmax(0, 1fr) 320px; min-height: 0; }
 .top { display: flex; align-items: center; gap: 10px; padding: 0 14px; background: var(--panel); border-bottom: 1px solid var(--line); }
 .logo { font-family: var(--font-serif); font-size: 21px; letter-spacing: -.01em; display: flex; align-items: center; gap: 8px; }
 .logo .mark { width: 20px; height: 20px; border-radius: 6px; background: linear-gradient(135deg, #5B5BF0, #A78BFA); box-shadow: inset 0 0 0 4px rgba(255,255,255,.35); }
@@ -173,7 +173,11 @@ body.dragging, body.dragging * { cursor: grabbing !important; user-select: none;
 .bar div { height: 100%; background: var(--accent); transition: width .2s; }
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.toast { position: fixed; bottom: 64px; left: 50%; transform: translateX(-50%); background: #1A1A1F; color: #fff; padding: 9px 14px; border-radius: 10px; z-index: 60; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+.toast { position: fixed; bottom: 64px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; background: #1A1A1F; color: #fff; padding: 8px 8px 8px 16px; min-height: 40px; border-radius: 10px; z-index: 60; box-shadow: 0 10px 30px rgba(0,0,0,.25); animation: tin .18s ease-out; }
+.toast:not(:has(button)) { padding-right: 16px; }
+.toast button { height: 28px; padding: 0 12px; border-radius: 6px; background: rgba(255,255,255,.12); color: #fff; font-weight: 600; }
+.toast button:hover { background: rgba(255,255,255,.2); }
+@keyframes tin { from { opacity: 0; transform: translate(-50%, 8px); } }
 
 /* --- Màn app mẫu trong máy (1em .mk = 4.2% bề ngang màn) --- */
 .mk { position: absolute; inset: 0; padding: 3.4em 1.15em 1em; font-family: var(--font-inter), sans-serif; color: #1d1d24; font-size: 4.2em; background: #fff; line-height: 1.25; }
@@ -186,3 +190,57 @@ body.dragging, body.dragging * { cursor: grabbing !important; user-select: none;
 
 /* --- Màn hẹp: ẩn bớt nhãn trên thanh trên --- */
 @media (max-width: 1280px) { .seg button { padding: 0 7px; } .center .seg:last-of-type button { font-size: 0; gap: 0; } }
+
+/* --- Đợt 1 polish: trạng thái lưu, hàng slide, chào mừng, lớp phủ thả file, màn hẹp --- */
+.save { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); padding: 0 8px; height: 24px; border-radius: 999px; }
+.save.error { color: #B91C1C; background: #FEE2E2; font-weight: 600; }
+.dark .save.error { background: #450a0a; color: #fca5a5; }
+.app .save svg.lucide { width: 13px; height: 13px; }
+.item { position: relative; }
+.rowact { display: none; gap: 0; position: absolute; right: 4px; top: 50%; transform: translateY(-50%); background: var(--soft); border-radius: 8px; padding: 2px; }
+.item:hover .rowact { display: flex; }
+.rowact .ibtn { width: 24px; height: 24px; }
+.ibtn.danger:hover { color: #DC2626; background: #FEE2E2; }
+.main { position: relative; }
+.dropover { position: absolute; inset: 8px 8px 56px; z-index: 30; border: 2px dashed var(--accent); border-radius: 16px; display: grid; place-items: center; pointer-events: none;
+  background: color-mix(in srgb, var(--accent) 10%, color-mix(in srgb, var(--bg) 80%, transparent)); backdrop-filter: blur(2px); }
+.dropover div { display: grid; justify-items: center; gap: 8px; color: var(--accent); }
+.dropover b { font-size: 16px; }
+.dropover span { color: var(--muted); font-size: 12px; }
+.app .dropover svg.lucide { width: 32px; height: 32px; }
+.welcome { position: absolute; inset: 0 0 48px; z-index: 25; display: grid; place-items: center; background: color-mix(in srgb, var(--bg) 55%, transparent); backdrop-filter: blur(6px); }
+.wcard { width: 360px; display: grid; justify-items: center; gap: 12px; text-align: center; padding: 32px 28px 24px; background: var(--panel); border: 1px solid var(--line); border-radius: 20px; box-shadow: 0 24px 64px rgba(20,20,40,.16); animation: tin2 .25s ease-out; }
+@keyframes tin2 { from { opacity: 0; transform: translateY(8px) scale(.98); } }
+.wcard h2 { margin: 4px 0 0; font-size: 20px; letter-spacing: -.01em; }
+.wcard p { margin: 0 0 8px; color: var(--muted); line-height: 1.5; }
+.wcard .primary, .wcard .ghost { width: 100%; height: 40px; }
+.w-ico { width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center; color: #fff; background: linear-gradient(135deg, #5B5BF0, #A78BFA); }
+.app .w-ico svg.lucide { width: 22px; height: 22px; }
+.check { white-space: nowrap; flex: none; }
+.foot { gap: 12px; }
+.tip { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+@media (max-width: 1360px) { .tip { display: none; } }
+@media (max-width: 1100px) { .foot .dims { display: none; } .save { font-size: 0; gap: 0; padding: 0 4px; } }
+.narrow { display: none; }
+@media (max-width: 899px) {
+  .narrow { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; justify-content: center; gap: 12px; padding: 32px 24px; background: var(--bg); }
+  .narrow h1 { margin: 16px 0 0; font-size: 28px; letter-spacing: -.02em; line-height: 1.15; }
+  .narrow p { margin: 0 0 12px; color: var(--muted); font-size: 15px; line-height: 1.5; }
+  .narrow .primary, .narrow .ghost { height: 44px; width: 100%; font-size: 14px; }
+}
+
+/* Màn 900–1199px: thu hẹp 2 cột bên, thanh trên chỉ còn icon cho store/view, bỏ badge ZIP */
+@media (max-width: 1199px) {
+  .body { grid-template-columns: 208px minmax(0, 1fr) 288px; }
+  .top { gap: 8px; padding: 0 12px; }
+  .center { gap: 6px; }
+  .top .seg button { font-size: 0; gap: 0; padding: 0 8px; }
+  .top .primary .badge { display: none; }
+  .top .chip select { max-width: 150px; }
+  .logo { font-size: 18px; }
+}
+@media (max-width: 1000px) {
+  .body { grid-template-columns: 192px minmax(0, 1fr) 272px; }
+  .top .chip select { max-width: 112px; }
+  .layouts button { font-size: 0; gap: 0; }
+}

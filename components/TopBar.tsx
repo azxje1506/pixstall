@@ -1,12 +1,14 @@
 // Thanh trên: logo · chọn store · chọn cỡ máy (có cỡ tự thêm) · ngôn ngữ · kiểu xem · undo/redo · sáng/tối · Export
-import { Apple, Play, Smartphone, Tablet, Languages, GalleryHorizontal, Square, Undo2, Redo2, Sun, Moon, Download } from "lucide-react";
+import { Cloud, CloudAlert, LoaderCircle, Apple, Play, Smartphone, Tablet, Languages, GalleryHorizontal, Square, Undo2, Redo2, Sun, Moon, Download } from "lucide-react";
 import type { Project, Store } from "@/lib/types";
 import { LOCALES, STORE_SIZES } from "@/lib/presets";
 import { currentSize, sizesOf } from "@/lib/rules";
 import { Seg } from "./ui";
+import type { SaveState } from "@/lib/useProject";
 
 interface Props {
   p: Project;
+  save: SaveState;
   view: "strip" | "single";
   dark: boolean;
   canUndo: boolean;
@@ -29,6 +31,11 @@ export function TopBar(x: Props) {
   return (
     <header className="top">
       <div className="logo"><span className="mark" />Pixstall</div>
+      {/* Trạng thái tự lưu trên trình duyệt (IndexedDB) */}
+      <span className={`save ${x.save}`} title={x.save === "error" ? "Couldn't save: browser storage is full or blocked (private mode?). Export a ZIP to keep your work." : "Saved in this browser"}>
+        {x.save === "error" ? <CloudAlert /> : x.save === "saved" ? <Cloud /> : <LoaderCircle className="spin" />}
+        {x.save === "error" ? "Not saved" : x.save === "saved" ? "Saved" : "Saving…"}
+      </span>
       <div className="center">
         <Seg value={x.p.store} onChange={x.onStore} options={[
           { v: "ios", label: "App Store", icon: <Apple /> },
@@ -58,10 +65,10 @@ export function TopBar(x: Props) {
           { v: "strip", label: "Store view", icon: <GalleryHorizontal /> },
           { v: "single", label: "Single", icon: <Square /> },
         ]} />
-        <button className="ibtn" title="Undo (Ctrl+Z)" disabled={!x.canUndo} onClick={x.onUndo}><Undo2 /></button>
-        <button className="ibtn" title="Redo (Ctrl+Shift+Z)" disabled={!x.canRedo} onClick={x.onRedo}><Redo2 /></button>
+        <button className="ibtn" title="Undo (Ctrl+Z)" aria-label="Undo" disabled={!x.canUndo} onClick={x.onUndo}><Undo2 /></button>
+        <button className="ibtn" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled={!x.canRedo} onClick={x.onRedo}><Redo2 /></button>
       </div>
-      <button className="ibtn" title="Theme" onClick={x.onDark}>{x.dark ? <Sun /> : <Moon />}</button>
+      <button className="ibtn" title={x.dark ? "Light mode" : "Dark mode"} aria-label="Toggle dark mode" onClick={x.onDark}>{x.dark ? <Sun /> : <Moon />}</button>
       <button className="primary" onClick={x.onExport}><Download />Export<span className="badge">ZIP</span></button>
     </header>
   );
