@@ -2,12 +2,14 @@
 // Ô ngôn ngữ chưa có bản dịch: nền vàng + chữ mờ là bản English (đang dùng tạm). Ô giống hệt English: chấm cam "EN"
 // "Fill from English" chép English vào các ô thiếu của cột (làm nháp). Dòng ảnh: mỗi ngôn ngữ một ảnh riêng (thiếu = dùng ảnh chung)
 // Chữ slide lưu theo cặp t[loc] = [headline, subtitle]: sửa 1 ô ở ngôn ngữ chưa có thì ô kia lấy tạm bản English
+// Cuối bảng: phần Feature graphic (App name · Tagline · chữ tự do) — en lưu ở name/tagline, ngôn ngữ khác ở feature.t
 import { Fragment, useMemo, useRef, useState } from "react";
 import { Languages, Plus, Wand2, ImageUp, X, Image as ImageIcon } from "lucide-react";
-import type { Project, Slide } from "@/lib/types";
+import type { Project, Slide, TextItem } from "@/lib/types";
 import { LOCALES } from "@/lib/presets";
 import { usedLocales, plain } from "@/lib/rules";
 import { imgSrc, putImage } from "@/lib/images";
+import { setFeatText } from "@/lib/layers";
 import { mockScreen } from "@/lib/mocks";
 import { Modal } from "./ui";
 
@@ -32,8 +34,10 @@ export function TranslateDialog({ p, update, onClose, onFlash }: { p: Project; u
   // Đếm số slide đã dịch ở một ngôn ngữ
   const done = (loc: string) => p.slides.filter((s) => s.t[loc]).length;
   const fill = (loc: string) => {
-    update((d) => ({ ...d, slides: d.slides.map((s) => ({ ...s, t: s.t[loc] ? s.t : { ...s.t, [loc]: [...en(s)] as [string, string] },
-      extras: s.extras?.map((x) => (x.t[loc] !== undefined ? x : { ...x, t: { ...x.t, [loc]: x.t.en ?? "" } })) })) }));
+    const fx = (xs?: TextItem[]) => xs?.map((x) => (x.t[loc] !== undefined ? x : { ...x, t: { ...x.t, [loc]: x.t.en ?? "" } }));
+    update((d) => ({ ...d,
+      slides: d.slides.map((s) => ({ ...s, t: s.t[loc] ? s.t : { ...s.t, [loc]: [...en(s)] as [string, string] }, extras: fx(s.extras) })),
+      feature: { ...d.feature, t: d.feature.t?.[loc] ? d.feature.t : { ...d.feature.t, [loc]: [d.feature.name, d.feature.tagline] }, extras: fx(d.feature.extras) } }));
     onFlash(`Copied English into empty ${LOCALES[loc]} cells`, true);
   };
   const pickImg = (fn: (ref: string) => void) => { fileTo.current = fn; fileIn.current?.click(); };
@@ -124,6 +128,21 @@ export function TranslateDialog({ p, update, onClose, onFlash }: { p: Project; u
                   </tr>,
                 ];
               })}
+              {/* --- Feature graphic --- */}
+              {(() => {
+                const f = p.feature, rows: [string, (l: string) => string | undefined, string, (l: string, v: string) => void][] = [];
+                if (f.layout !== "phones") {
+                  rows.push(["App name", (l) => (l === "en" ? f.name : f.t?.[l]?.[0]), f.name, (l, v) => update((d) => ({ ...d, feature: { ...d.feature, ...setFeatText(d.feature, l, 0, v) } }), `trf-${l}-0`)]);
+                  rows.push(["Tagline", (l) => (l === "en" ? f.tagline : f.t?.[l]?.[1]), f.tagline, (l, v) => update((d) => ({ ...d, feature: { ...d.feature, ...setFeatText(d.feature, l, 1, v) } }), `trf-${l}-1`)]);
+                }
+                for (const x of f.extras ?? []) rows.push([x.pill ? "Badge" : "Text", (l) => x.t[l], x.t.en ?? "", (l, v) => update((d) => ({ ...d, feature: { ...d.feature, extras: (d.feature.extras ?? []).map((y) => (y.id === x.id ? { ...y, t: { ...y.t, [l]: v } } : y)) } }), `trfx-${x.id}-${l}`)]);
+                return rows.map(([label, get, enVal, set], r) => (
+                  <tr key={"f" + r} className={r === 0 ? "trfirst" : ""}>
+                    <th className="trk">{r === 0 && <b>Feature graphic</b>}<span>{label}</span></th>
+                    {locs.map((l) => <Fragment key={l}>{cell(get(l), enVal, (v) => set(l, v), l)}</Fragment>)}
+                  </tr>
+                ));
+              })()}
             </tbody>
           </table>
         </div>

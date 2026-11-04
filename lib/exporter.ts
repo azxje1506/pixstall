@@ -26,7 +26,12 @@ export function planFiles(p: Project, o: ExportOptions): string[] {
     for (const l of o.locales) for (let i = 0; i < max; i++)
       files.push(`${z.store === "ios" ? "app-store" : "google-play"}/${slug(z.name)}_${z.w}x${z.h}/${l}/${String(i + 1).padStart(2, "0")}.${o.format}`);
   }
-  if (o.feature) files.push(`google-play/feature-graphic_${FEATURE_SIZE.w}x${FEATURE_SIZE.h}.${o.format}`);
+  // Feature graphic: 1 ngôn ngữ → 1 file như cũ; nhiều ngôn ngữ → thư mục feature-graphic_1024x500/<locale>.png
+  if (o.feature) {
+    const base = `google-play/feature-graphic_${FEATURE_SIZE.w}x${FEATURE_SIZE.h}`;
+    if (o.locales.length > 1) for (const l of o.locales) files.push(`${base}/${l}.${o.format}`);
+    else files.push(`${base}.${o.format}`);
+  }
   return files;
 }
 
@@ -74,9 +79,9 @@ export async function exportZip(p: Project, o: ExportOptions, onProgress: (done:
         onProgress(++k, files.length);
       }
     }
-    if (o.feature) {
+    if (o.feature) for (const l of o.locales.length > 1 ? o.locales : [o.locales[0] ?? p.loc]) {
       if (signal?.aborted) throw new Error("Cancelled");
-      flushSync(() => root.render(createElement(FeatureCanvas, { p, width: FEATURE_SIZE.w, loc: o.locales[0] ?? p.loc })));
+      flushSync(() => root.render(createElement(FeatureCanvas, { p, width: FEATURE_SIZE.w, loc: l })));
       zip.file(files[k], await snap(FEATURE_SIZE.w, FEATURE_SIZE.h));
       onProgress(++k, files.length);
     }

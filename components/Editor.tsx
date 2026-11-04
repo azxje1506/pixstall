@@ -15,7 +15,7 @@ import type { CanvasPick, LayerPick } from "./SlideCanvas";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { putImage } from "@/lib/images";
 import { Crop, CopyPlus, Trash2, ImageUp, RotateCcw, BringToFront, SendToBack, Heading, Type, Pilcrow, Tag } from "lucide-react";
-import { isLayer, isText, isDevice, posOf, withPos, toggleHidden as toggleH, removeLayer, layerName, canAdd, type LayerId } from "@/lib/layers";
+import { isFeat, fToggleHidden, fRemoveLayer, fLayerName, fCanAdd, setFeatText, phoneIdx, phoneOf, nameOfLayer, isLayer, isText, isDevice, posOf, withPos, toggleHidden as toggleH, removeLayer, layerName, canAdd, type LayerId } from "@/lib/layers";
 import { currentSize, themeOf, textOf } from "@/lib/rules";
 
 // Ảnh tải lên → kho ảnh (thu nhỏ nếu >4000px), trả "img:<id>"; file hỏng thì bỏ qua
@@ -52,10 +52,19 @@ export default function Editor() {
     setTimeout(() => setPick(layer), 0); // chạy sau effect đổi slide
   };
   const patchAt = (i: number, fn: (s: Slide) => Partial<Slide> | null, tag = "") => update((d) => ({ ...d, slides: d.slides.map((s, j) => { if (j !== i) return s; const x = fn(s); return x ? { ...s, ...x } : s; }) }), tag);
-  const toggleHidden = (i: number, layer: LayerPick) => patchAt(i, (s) => toggleH(s, layer));
-  // Xoá layer chữ (Headline/Subtitle xoá nội dung ở mọi ngôn ngữ; chữ tự do bỏ hẳn) → về cấp Slide, có Undo
+  // i = -1 → Feature graphic (mọi thao tác layer bên dưới)
+  const patchF = (fn: (f: Feature) => Partial<Feature> | null) => update((d) => { const x = fn(d.feature); return x ? { ...d, feature: { ...d.feature, ...x } } : d; });
+  const toggleHidden = (i: number, layer: LayerPick) => (i === -1 ? patchF((f) => fToggleHidden(f, layer)) : patchAt(i, (s) => toggleH(s, layer)));
+  // Xoá layer chữ (Headline/Subtitle/App name/Tagline xoá nội dung ở mọi ngôn ngữ; chữ tự do bỏ hẳn) → về cấp trên, có Undo
   const removeAt = (i: number, layer: LayerId) => {
-    const s = p.slides[i]; if (!s || layer === "device") return;
+    if (i === -1) {
+      if (!fRemoveLayer(p.feature, layer)) return;
+      const nm = fLayerName(p.feature, layer);
+      patchF((f) => fRemoveLayer(f, layer));
+      setPick("slide");
+      return flash(`${nm} removed`, true);
+    }
+    const s = p.slides[i]; if (!s || isDevice(layer)) return;
     const nm = layerName(s, layer);
     patchAt(i, (x) => removeLayer(x, layer));
     setPick("slide");
@@ -63,6 +72,22 @@ export default function Editor() {
   };
   // Thêm layer chữ: Headline/Subtitle (khi đang thiếu) hoặc chữ tự do / nhãn pill đặt gần đáy slide
   const addText = (i: number, kind: "title" | "sub" | "text" | "badge") => {
+    // Feature graphic: tên app / tagline điền chữ mẫu; chữ tự do đặt dưới khối chữ, badge ở góc trên
+    if (i === -1) {
+      const f = p.feature, t = p.theme, loc = p.loc;
+      let id: LayerId;
+      if (kind === "title" || kind === "sub") {
+        const k = kind === "title" ? 0 : 1;
+        patchF((x) => ({ ...setFeatText(x, loc, k, k ? "Your tagline here" : "Your App"), hidden: { ...x.hidden, [kind]: false } }));
+        id = kind;
+      } else {
+        const xid = uid(), pill = kind === "badge", left = (f.layout ?? "split") === "split";
+        const item = { id: xid, t: { [loc]: pill ? "NEW" : "Available now" }, x: left ? (pill ? 12 : 26) : 50, y: pill ? 6 : 43, size: pill ? 2.4 : t.tsize * 0.36, weight: pill ? 700 : 600, pill };
+        patchF((x) => ({ extras: [...(x.extras ?? []), item] }));
+        id = `x:${xid}`;
+      }
+      return pickLayer(-1, id);
+    }
     const s = p.slides[i]; if (!s) return;
     const loc = p.loc, z = currentSize(p), hEm = (100 * z.h) / z.w, t = themeOf(p, s);
     let id: LayerId;
@@ -84,11 +109,11 @@ export default function Editor() {
     pickLayer(i, id);
   };
   const addItems = (i: number): MenuItem[] => {
-    const s = p.slides[i]; if (!s) return [];
-    const can = canAdd(s, p.loc);
+    const s = i === -1 ? p.feature : p.slides[i]; if (!s) return [];
+    const can = isFeat(s) ? fCanAdd(s, p.loc) : canAdd(s, p.loc), fe = i === -1;
     return [
-      { label: "Headline", icon: <Heading />, disabled: !can.title, onClick: () => addText(i, "title") },
-      { label: "Subtitle", icon: <Pilcrow />, disabled: !can.sub, onClick: () => addText(i, "sub") },
+      { label: fe ? "App name" : "Headline", icon: <Heading />, disabled: !can.title || (fe && p.feature.layout === "phones"), onClick: () => addText(i, "title") },
+      { label: fe ? "Tagline" : "Subtitle", icon: <Pilcrow />, disabled: !can.sub || (fe && p.feature.layout === "phones"), onClick: () => addText(i, "sub") },
       "sep",
       { label: "Text", icon: <Type />, onClick: () => addText(i, "text") },
       { label: "Badge", icon: <Tag />, onClick: () => addText(i, "badge") },
@@ -113,7 +138,7 @@ export default function Editor() {
       // Esc lùi 1 cấp: layer → slide → không chọn (đang gõ chữ thì ô chữ tự xử lý Esc)
       if (e.key === "Escape") { if (crop) return setCrop(null); return setPick((x) => (isLayer(x) ? "slide" : null)); }
       // Delete / Backspace: xoá layer chữ đang chọn
-      if ((e.key === "Delete" || e.key === "Backspace") && tab === "slide" && isText(isLayer(pick) ? pick : null)) { e.preventDefault(); removeAt(idx, pick as LayerId); return; }
+      if ((e.key === "Delete" || e.key === "Backspace") && isText(isLayer(pick) ? pick : null)) { e.preventDefault(); removeAt(tab === "feature" ? -1 : idx, pick as LayerId); return; }
       const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
       if (!dir) return;
       if (isLayer(pick)) {
@@ -151,7 +176,7 @@ export default function Editor() {
     const patch = (x: Record<string, unknown>) => (isF ? patchFeature(x) : update((d) => ({ ...d, slides: d.slides.map((s, j) => (j === m.i ? { ...s, ...x } : s)) })));
     const front = it.front ?? "text";
     const tg = isLayer(m.target) ? m.target : null, grp = isDevice(tg) ? "device" : "text";
-    const name = isDevice(tg) ? (isF ? "devices" : "device") : "text";
+    const name = isDevice(tg) ? "device" : "text";
     const items: MenuItem[] = [];
     if (tg) items.push(
       { label: `Bring ${name} to front`, icon: <BringToFront />, disabled: front === grp, onClick: () => patch({ front: grp }) },
@@ -162,9 +187,11 @@ export default function Editor() {
     const sl = it as Slide;
     const moved = tg ? !tg.startsWith("x:") && posOf(it, tg).some(Boolean) : !!(it.dx || it.dy || it.tx || it.ty || (!isF && (sl.sx || sl.sy)));
     items.push({ label: "Reset position", icon: <RotateCcw />, disabled: !moved, onClick: () => patch(tg ? withPos(it, tg, 0, 0) : { dx: 0, dy: 0, tx: 0, ty: 0, sx: 0, sy: 0 }) });
-    if (!isF && tg === "device" && sl.img) items.push({ label: crop === "device" ? "Done adjusting image" : "Adjust image…", icon: <Crop />, kbd: "Dbl-click", onClick: () => setCrop(crop === "device" ? null : "device") });
-    if (!isF && tg && !isDevice(tg)) items.push({ label: `Delete ${layerName(sl, tg).toLowerCase()}`, icon: <Trash2 />, kbd: "Del", danger: true, onClick: () => removeAt(m.i, tg) });
-    if (!isF && !tg) items.push("sep", ...addItems(m.i).map((x) => (x === "sep" ? x : { ...x, label: `Add ${x.label.toLowerCase()}` })));
+    // Căn ảnh: máy chính, máy 2 của Duo (ảnh riêng) hoặc máy Feature graphic có ảnh riêng
+    const canCrop = tg && (isF ? !!phoneOf(p.feature, phoneIdx(tg)).img && phoneIdx(tg) >= 0 : (tg === "device" && !!sl.img) || (tg === "device2" && !!sl.img2));
+    if (canCrop && tg) items.push({ label: crop === tg ? "Done adjusting image" : "Adjust image…", icon: <Crop />, kbd: "Dbl-click", onClick: () => setCrop(crop === tg ? null : tg) });
+    if (tg && !isDevice(tg) && tg !== "icon") items.push({ label: `Delete ${nameOfLayer(it, tg).toLowerCase()}`, icon: <Trash2 />, kbd: "Del", danger: true, onClick: () => removeAt(m.i, tg) });
+    if (!tg) items.push("sep", ...addItems(m.i).map((x) => (x === "sep" ? x : { ...x, label: `Add ${x.label.toLowerCase()}` })));
     if (!isF) items.push(
       "sep",
       { label: "Duplicate slide", icon: <CopyPlus />, kbd: "Ctrl D", onClick: () => dupAt(m.i) },
@@ -246,8 +273,8 @@ export default function Editor() {
           edit={{ sel: pick, hover: hov, onSel: setPick, onPatch: patchCur, crop, onCrop: setCrop }}
           onMenu={(x, y, i, target) => setMenu({ x, y, i, target })} />
         <Inspector p={p} sel={idx} tab={tab} update={update} pick={pick}
-          onPickLayer={setPick} onToggleHidden={(l) => toggleHidden(idx, l)}
-          onRemoveLayer={(l) => removeAt(idx, l)} onAddMenu={(x, y) => setAddMenu({ x, y, i: idx })}
+          onPickLayer={setPick} onToggleHidden={(l) => toggleHidden(tab === "feature" ? -1 : idx, l)}
+          onRemoveLayer={(l) => removeAt(tab === "feature" ? -1 : idx, l)} onAddMenu={(x, y) => setAddMenu({ x, y, i: tab === "feature" ? -1 : idx })}
           crop={crop} onCrop={(l) => { if (l) setPick(l); setCrop(l); }}
           onReplace={pickFile} onReplaceFile={(f, k) => replace(f, k)} onFlash={flash}
           onDuplicate={() => dupAt(idx)} />

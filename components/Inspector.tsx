@@ -1,4 +1,5 @@
 // Cột phải (kiểu Framer): CHỈ hiện setting của layer đang chọn
+//   Feature graphic: App icon · App name · Tagline · Text/Badge · Phone 1..3 — mỗi cái một panel (giống slide)
 //   Layer chữ: Headline · Subtitle · Text/Badge tự do (x:…) — mỗi loại một panel; Delete để xoá, "+ Add text" để thêm
 //   tab "Slide"/"Feature": breadcrumb "Slide 03 › Device" + panel theo cấp chọn
 //     · Slide (hoặc chưa chọn): layer con (bấm để chọn, mắt để ẩn) · Layout · Background
@@ -9,7 +10,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ImageUp, CopyPlus, ImageOff, RotateCcw, Smartphone, EyeOff, Eye, TextAlignStart, TextAlignCenter, Sun, Moon, Type,
   PanelBottom, ArrowDownToLine, Copy, MoveRight, CopyCheck, ChevronRight, Frame, Highlighter, Plus, Trash2, Crop, Link2, Languages, Columns2, AlignCenter, GalleryHorizontalEnd, Image as ImageIcon } from "lucide-react";
-import type { Project, Slide, Theme, ThemeKey, Feature, Layout, Tilt3D, FrameStyle, FrameColor, Bg } from "@/lib/types";
+import type { Project, Slide, Theme, ThemeKey, Feature, Layout, Tilt3D, FrameStyle, FrameColor, Bg, TextItem, ImgFit, PhoneCfg } from "@/lib/types";
 import { FONTS, FRAME_COLORS, GRADIENTS, TILT_PRESETS, DEFAULT_THEME, LOCALES } from "@/lib/presets";
 import { textOf, themeOf, plain, allSizes, imgFor } from "@/lib/rules";
 import { mockScreen } from "@/lib/mocks";
@@ -17,7 +18,7 @@ import { FEATURE_ICONS } from "./icons";
 import { Seg, Slider, Group, Num, Prop, Tabs } from "./ui";
 import { ColorField } from "./ColorField";
 import type { CanvasPick, LayerPick } from "./SlideCanvas";
-import { isLayer, isHidden, layersOf, layerName as nameOf, extraOf, extraText, patchExtra, type LayerId } from "@/lib/layers";
+import { isLayer, isHidden, layersOf, layerName as nameOf, extraOf, extraText, patchExtra, posOf, withPos, featText, setFeatText, fLayersOf, fIsHidden, fRemovable, fLayerName, phoneIdx, phoneOf, setPhone, phoneCount as phoneCountOf, type LayerId } from "@/lib/layers";
 import { imgSrc, imgMeta, putImage } from "@/lib/images";
 import { ASPECT } from "./Device";
 import { panRange, screenRatio, featureShot } from "./SlideCanvas";
@@ -171,17 +172,17 @@ function TypeGroup({ sc }: { sc: Scope }) {
 }
 
 // --- Khối Device: vị trí máy + cỡ + nghiêng 3D (slide và feature) ---
-function DeviceControls({ v, scaleRange, onChange, tag, right, label = "Device" }: {
-  v: Tilt3D & { scale: number; dx?: number; dy?: number }; scaleRange: [number, number]; tag: string; right?: ReactNode; label?: string;
+function DeviceControls({ v, scaleRange, onChange, tag, right, label = "Device", noPos }: {
+  v: Tilt3D & { scale: number; dx?: number; dy?: number }; scaleRange: [number, number]; tag: string; right?: ReactNode; label?: string; noPos?: boolean;
   onChange: (patch: Partial<Tilt3D & { scale: number; dx: number; dy: number }>, tag?: string) => void;
 }) {
   const active = TILT_PRESETS.find((t) => t.v.rx === v.rx && t.v.ry === v.ry && t.v.rz === v.rz)?.id;
   return (
     <Group id={`${tag}-device`} title={label} right={right}>
-      <Prop label="Position">
+      {!noPos && <Prop label="Position">
         <Num prefix="X" value={v.dx ?? 0} step={0.5} onChange={(dx) => onChange({ dx }, tag + "dx")} />
         <Num prefix="Y" value={v.dy ?? 0} step={0.5} onChange={(dy) => onChange({ dy }, tag + "dy")} />
-      </Prop>
+      </Prop>}
       <Slider label="Size" value={v.scale} min={scaleRange[0]} max={scaleRange[1]} unit="%" onChange={(scale) => onChange({ scale }, tag + "sc")} />
       <span className="sublab">3D tilt</span>
       <div className="presets">
@@ -312,7 +313,7 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
 
   // Breadcrumb: "Slide 03 › Device"; bấm phần đầu để lùi về cấp slide
   const rootName = isFeature ? "Feature graphic" : `Slide ${String(sel + 1).padStart(2, "0")}`;
-  const layerName = !layer ? "" : isFeature ? (layer === "device" ? "Devices" : "Text & icon") : nameOf(p.slides[sel], layer);
+  const layerName = !layer ? "" : isFeature ? fLayerName(p.feature, layer) : nameOf(p.slides[sel], layer);
   const crumb = (actions: ReactNode) => (
     <div className="slidebar">
       <nav className="crumb" aria-label="Selection">
@@ -323,21 +324,128 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
     </div>
   );
 
-  // ===== Feature graphic =====
-  if (isFeature) {
-    const f = p.feature, flay = f.layout ?? "split", phoneCount = flay === "phones" ? 3 : 2;
-    const moved = layer === "title" ? !!(f.tx || f.ty) : !!(f.dx || f.dy);
-    const reset = layer && moved ? <button className="gbtn" title="Reset position" onClick={() => setFeature(layer === "title" ? { tx: 0, ty: 0 } : { dx: 0, dy: 0 })}><RotateCcw />Reset</button> : null;
-    let body: ReactNode;
-    if (layer === "title") body = <>
-      <Group id="f-text" title="Text & icon">
-        <input className="field" value={f.name} aria-label="App name" placeholder="App name" onChange={(e) => setFeature({ name: e.target.value }, "fname")} />
-        <input className="field" value={f.tagline} aria-label="Tagline" placeholder="Tagline" onChange={(e) => setFeature({ tagline: e.target.value }, "ftag")} />
-        <Prop label="Position">
-          <Num prefix="X" value={f.tx ?? 0} step={0.5} onChange={(tx) => setFeature({ tx }, "ftx")} />
-          <Num prefix="Y" value={f.ty ?? 0} step={0.5} onChange={(ty) => setFeature({ ty }, "fty")} />
+  // Bọc phần đang bôi đen trong ô (tiêu đề/phụ đề/chữ tự do) bằng *…* (bấm lại khi đã bọc thì gỡ)
+  const highlight = (val: string, write: (v: string) => void) => {
+    const el = ta.current; if (!el) return;
+    let [a, b] = [el.selectionStart ?? 0, el.selectionEnd ?? 0];
+    if (a === b) { onFlash("Select some words first — or select them right on the canvas"); return; }
+    while (val[a] === " ") a++; while (b > a && val[b - 1] === " ") b--;
+    const wrapped = val[a - 1] === "*" && val[b] === "*";
+    write(wrapped ? val.slice(0, a - 1) + val.slice(a, b) + val.slice(b + 1) : val.slice(0, a) + "*" + val.slice(a, b) + "*" + val.slice(b));
+  };
+  const hlRow = (val: string, write: (v: string) => void) => (
+    <div className="hlrow">
+      <button className="gbtn" title="Select words in the box above, then click to color them" onMouseDown={(e) => e.preventDefault()} onClick={() => highlight(val, write)}><Highlighter />Highlight</button>
+      <span className="hint">or select words right on the canvas</span>
+    </div>
+  );
+
+  // Thẻ ảnh chung (feature): xem ảnh / màn mẫu, thả file để thay qua onFile
+  const card = (src: string | null | undefined, mock: number, title: string, hint: string, extra: ReactNode, onFile: (ref: string) => void) => (
+    <div className={`shot ${hot ? "hot" : ""}`}
+      onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); e.stopPropagation(); setHot(true); } }}
+      onDragLeave={() => setHot(false)}
+      onDrop={async (e) => { e.preventDefault(); e.stopPropagation(); setHot(false); const fl = e.dataTransfer.files[0]; if (!fl) return; const ref = await putImage(fl).catch(() => null); if (ref) onFile(ref); }}>
+      <div className="shot-img">
+        {src ? <img src={imgSrc(src, true)} alt="" draggable={false} /> : <div className="shot-mock" dangerouslySetInnerHTML={{ __html: mockScreen(mock) }} />}
+        {!src && <span className="shot-tag">Sample</span>}
+      </div>
+      <div className="shot-meta">
+        <span className="shot-t">{title}</span>
+        <span className="hint">{hot ? "Drop to replace" : hint}</span>
+        <span className="row g4">{extra}</span>
+      </div>
+    </div>
+  );
+
+  // Nhóm "Image in screen" dùng chung (máy slide, máy 2 Duo, máy Feature): Fill/Fit · Zoom · Offset · căn trên canvas · cảnh báo tỉ lệ
+  const imgFit = (gid: string, img: string, c: ImgFit, set: (patch: ImgFit, tag?: string) => void, cropId: LayerId, kind: "phone" | "tablet", th: Theme) => {
+    const sr = screenRatio(kind, th), pr = panRange(img, c, sr), m = imgMeta(img);
+    const d = m && c.fit !== "fit" ? (m.h / m.w) * sr - 1 : 0; // >0: ảnh cao hơn màn → cắt trên/dưới
+    return (
+      <Group id={gid} title="Image in screen" right={(c.ix || c.iy || (c.iz ?? 1) !== 1 || c.fit === "fit") ? <button className="gbtn" onClick={() => set({ ix: 0, iy: 0, iz: 1, fit: "fill" })}><RotateCcw />Reset</button> : undefined}>
+        <Prop label="Mode">
+          <Seg full value={c.fit ?? "fill"} onChange={(fit: "fill" | "fit") => set({ fit })} options={[{ v: "fill", label: "Fill" }, { v: "fit", label: "Fit" }]} />
+        </Prop>
+        <Slider label="Zoom" value={Math.round((c.iz ?? 1) * 100)} min={100} max={300} step={5} unit="%" onChange={(v) => set({ iz: v / 100 }, gid + "iz")} />
+        {(pr[0] > 0 || pr[1] > 0) ? (
+          <Prop label="Offset">
+            {pr[0] > 0 && <Num prefix="X" value={c.ix ?? 0} step={5} min={-100} max={100} onChange={(ix) => set({ ix }, gid + "ix")} />}
+            {pr[1] > 0 && <Num prefix="Y" value={c.iy ?? 0} step={5} min={-100} max={100} onChange={(iy) => set({ iy }, gid + "iy")} />}
+          </Prop>
+        ) : <p className="hint">The whole screenshot is visible — zoom in to reposition it.</p>}
+        <button className={crop === cropId ? "primary sm wide" : "ghost sm wide"} onClick={() => onCrop(crop === cropId ? null : cropId)}>
+          <Crop />{crop === cropId ? "Done adjusting" : "Adjust on canvas"}
+        </button>
+        {m && Math.abs(d) >= 0.06 && <p className="warnline small"><Crop />{m.w}×{m.h} is {d > 0 ? "taller" : "wider"} than this screen — the {d > 0 ? "top & bottom" : "sides"} get cropped. Drag to reposition or switch to Fit.</p>}
+      </Group>
+    );
+  };
+
+  // Panel chữ tự do / badge dùng chung (slide + feature)
+  const extraPanel = (ex: TextItem, setEx: (patch: Partial<TextItem>, tag?: string) => void, th: Theme) => {
+    const val = extraText(ex, p.loc);
+    return <>
+      <Group id="s-extra" title={ex.pill ? "Badge" : "Text"} right={<span className="mono">{LOCALES[p.loc]}</span>}>
+        <textarea ref={ta} className="field" rows={1} value={val} aria-label="Text" placeholder="Text" onChange={(e) => setEx({ t: { ...ex.t, [p.loc]: e.target.value } }, "xtext")} />
+        {hlRow(val, (v) => setEx({ t: { ...ex.t, [p.loc]: v } }))}
+      </Group>
+      <Group id="s-xstyle" title="Style">
+        <Prop label="Kind">
+          <Seg full value={ex.pill ? "pill" : "plain"} onChange={(v) => setEx({ pill: v === "pill" })} options={[{ v: "plain", label: "Text" }, { v: "pill", label: "Badge" }]} />
+        </Prop>
+        <Slider label="Size" value={ex.size} min={1.5} max={12} step={0.1} onChange={(size) => setEx({ size }, "xsize")} />
+        <Slider label="Weight" value={ex.weight} min={400} max={900} step={100} onChange={(weight) => setEx({ weight }, "xw")} />
+        {!ex.pill && <Prop label="Color" mark={!!ex.color} onReset={() => setEx({ color: "" })}>
+          <ColorField label="Text color" value={ex.color || (th.tcolor || (th.ink === "light" ? "#FFFFFF" : "#15151A"))} onChange={(color) => setEx({ color }, "xc")} />
+        </Prop>}
+        {ex.pill && <p className="hint">Badge color follows the highlight color in Typography.</p>}
+        <Prop label="Center">
+          <Num prefix="X" value={ex.x} step={0.5} onChange={(x) => setEx({ x }, "xx")} />
+          <Num prefix="Y" value={ex.y} step={0.5} onChange={(y) => setEx({ y }, "xy")} />
         </Prop>
       </Group>
+    </>;
+  };
+
+  // ===== Feature graphic ===== (layer: icon · title=App name · sub=Tagline · x:… · device/device2/device3 = Phone 1..3)
+  if (isFeature) {
+    const f = p.feature, flay = f.layout ?? "split", pc = phoneCountOf(f);
+    const [fname, ftag] = featText(f, p.loc);
+    const pj = phoneIdx(layer), pcfg: PhoneCfg | null = pj >= 0 ? phoneOf(f, pj) : null;
+    const fex = layer ? extraOf(f, layer) : undefined;
+    const setPh = (patch: Partial<PhoneCfg>, tag?: string) => setFeature({ phones: setPhone(f, pj, patch) }, tag);
+    const fHidden = layer ? fIsHidden(f, layer) : false;
+    const [fx, fy] = layer && !fex ? posOf(f, layer) : [0, 0];
+    const setPos = (x: number, y: number, tag: string) => layer && setFeature(withPos(f, layer, x, y) as Partial<Feature>, tag);
+    const actions = <>
+      {layer && !fex && (fx || fy) ? <button className="gbtn" title="Reset position" onClick={() => setPos(0, 0, "")}><RotateCcw />Reset</button> : null}
+      {layer && <button className="ibtn" title={fHidden ? "Show layer" : "Hide layer"} aria-label={fHidden ? "Show layer" : "Hide layer"} onClick={() => onToggleHidden(layer)}>{fHidden ? <EyeOff /> : <Eye />}</button>}
+      {layer && fRemovable(layer) && <button className="ibtn danger" title="Delete layer (Del)" aria-label="Delete layer" onClick={() => onRemoveLayer(layer)}><Trash2 /></button>}
+    </>;
+    const hid = fHidden && <p className="hidnote"><EyeOff />This layer is hidden.</p>;
+    const posGroup = (gid: string) => (
+      <Group id={gid} title="Position">
+        <Prop label="Offset">
+          <Num prefix="X" value={fx} step={0.5} onChange={(x) => setPos(x, fy, gid + "x")} />
+          <Num prefix="Y" value={fy} step={0.5} onChange={(y) => setPos(fx, y, gid + "y")} />
+        </Prop>
+      </Group>
+    );
+    let body: ReactNode;
+    if (layer === "title" || layer === "sub") {
+      const k = layer === "title" ? 0 : 1, val = k ? ftag : fname;
+      body = <>
+        {hid}
+        <Group id="f-text" title={k ? "Tagline" : "App name"} right={<span className="mono">{LOCALES[p.loc]}</span>}>
+          <textarea ref={ta} className="field" rows={1} value={val} aria-label={k ? "Tagline" : "App name"} placeholder={k ? "Tagline" : "App name"} onChange={(e) => setFeature(setFeatText(f, p.loc, k, e.target.value), `ft${k}`)} />
+          {hlRow(val, (v) => setFeature(setFeatText(f, p.loc, k, v)))}
+        </Group>
+        {posGroup("f-tpos")}
+        <TypeGroup sc={project} />
+      </>;
+    } else if (layer === "icon") body = <>
+      {hid}
       {/* Icon app: ảnh thật (khuyên dùng, 512×512) hoặc icon có sẵn */}
       <Group id="f-icon" title="App icon">
         <div className="iconrow">
@@ -357,43 +465,61 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
           ))}
         </div>}
       </Group>
-      <TypeGroup sc={project} />
+      {posGroup("f-ipos")}
     </>;
-    else if (layer === "device") body = <>
-      {/* Mỗi máy chọn ảnh của 1 slide (lưu id slide → kéo đổi thứ tự slide vẫn đúng) */}
-      <Group id="f-shots" title="Screens">
-        {Array.from({ length: phoneCount }, (_, j) => (
-          <Prop key={j} label={`Phone ${j + 1}`}>
-            <label className="chip">
-              <select value={p.slides[featureShot(p, j)]?.id} aria-label={`Screen of phone ${j + 1}`} onChange={(e) => {
-                const ids = Array.from({ length: phoneCount }, (_, q) => p.slides[featureShot(p, q)]?.id ?? "");
-                ids[j] = e.target.value; setFeature({ shots: ids });
-              }}>
-                {p.slides.map((x, i) => <option key={x.id} value={x.id}>Slide {String(i + 1).padStart(2, "0")} · {plain(textOf(x, p.loc)[0]) || "Untitled"}</option>)}
-              </select>
-            </label>
+    else if (fex && layer) body = <>{hid}{extraPanel(fex, (patch, tag) => setFeature(patchExtra(f, layer, patch), tag), project.t)}</>;
+    else if (pcfg && layer) {
+      const si = featureShot(p, pj), linkedS = p.slides[si];
+      body = <>
+        {hid}
+        {/* Ảnh của máy: ảnh riêng (chỉ dùng ở feature graphic) hoặc liên kết ảnh một slide */}
+        <Group id="f-shot" title="Screenshot">
+          {pcfg.img
+            ? card(pcfg.img, 0, "Own image", "Only used in the feature graphic", <>
+                <button className="primary sm" onClick={() => pickTo((img) => setPh({ img, ix: 0, iy: 0, iz: 1 }))}><ImageUp />Replace</button>
+                <button className="ghost sm" title="Use a slide's screenshot instead" onClick={() => setPh({ img: undefined })}><Link2 />Link slide</button>
+              </>, (img) => setPh({ img, ix: 0, iy: 0, iz: 1 }))
+            : <>
+                <Prop label="Slide">
+                  <label className="chip">
+                    <select value={linkedS?.id} aria-label={`Screen of phone ${pj + 1}`} onChange={(e) => {
+                      const ids = Array.from({ length: pc }, (_, q) => p.slides[featureShot(p, q)]?.id ?? "");
+                      ids[pj] = e.target.value; setFeature({ shots: ids });
+                    }}>
+                      {p.slides.map((x, i) => <option key={x.id} value={x.id}>Slide {String(i + 1).padStart(2, "0")} · {plain(textOf(x, p.loc)[0]) || "Untitled"}</option>)}
+                    </select>
+                  </label>
+                </Prop>
+                {card(imgFor(linkedS, p.loc), linkedS?.mock ?? 0, `Linked to slide ${String(si + 1).padStart(2, "0")}`, "Follows that slide's screenshot", <>
+                  <button className="primary sm" onClick={() => pickTo((img) => setPh({ img, ix: 0, iy: 0, iz: 1 }))}><ImageUp />Use own image</button>
+                </>, (img) => setPh({ img, ix: 0, iy: 0, iz: 1 }))}
+              </>}
+        </Group>
+        {pcfg.img && imgFit("f-img", pcfg.img, pcfg, (patch, tag) => setPh(patch, tag), layer, "phone", project.t)}
+        <Group id="f-phone" title={`Phone ${pj + 1}`}>
+          <Prop label="Position">
+            <Num prefix="X" value={pcfg.dx ?? 0} step={0.5} onChange={(dx) => setPh({ dx }, "pdx")} />
+            <Num prefix="Y" value={pcfg.dy ?? 0} step={0.5} onChange={(dy) => setPh({ dy }, "pdy")} />
           </Prop>
-        ))}
-      </Group>
-      <DeviceControls label="Devices" v={f} scaleRange={[12, 30]} tag="f" onChange={(patch, tg) => setFeature(patch, tg)} />
-      <FrameGroup sc={project} />
-    </>;
-    else body = <>
-      <LayerList onPick={onPickLayer} rows={[
-        ...(flay !== "phones" ? [{ id: "title" as LayerId, name: "Text & icon", sub: f.name || "—" }] : []),
-        { id: "device", name: "Devices", sub: f.device ? `${phoneCount} phones` : "hidden", hidden: !f.device },
-      ]} onToggle={(l) => l === "device" && setFeature({ device: !f.device })} />
+          <Slider label="Extra spin" value={pcfg.rz ?? 0} min={-30} max={30} unit="°" onChange={(rz) => setPh({ rz }, "prz")} />
+        </Group>
+        <DeviceControls label="All phones" noPos v={f} scaleRange={[12, 30]} tag="f" onChange={(patch, tg) => setFeature(patch, tg)} />
+        <FrameGroup sc={project} />
+      </>;
+    } else body = <>
+      <LayerList onPick={onPickLayer} onToggle={onToggleHidden} onAdd={onAddMenu}
+        rows={fLayersOf(f, p.loc, (j) => featureShot(p, j) + 1).map((l) => ({ ...l, hidden: fIsHidden(f, l.id) }))} />
       <Group id="f-layout" title="Layout" right={<span className="mono">1024×500</span>}>
         <div className="layouts three">
           {([["split", "Text left", <Columns2 key="a" />], ["center", "Centered", <AlignCenter key="b" />], ["phones", "Phones", <GalleryHorizontalEnd key="c" />]] as const).map(([v, label, ic]) => (
-            <button key={v} className={flay === v ? "on" : ""} onClick={() => setFeature({ layout: v, dx: 0, dy: 0, tx: 0, ty: 0, ...(v !== "split" && !f.device ? { device: true } : {}) })}>{ic}{label}</button>
+            <button key={v} className={flay === v ? "on" : ""} onClick={() => setFeature({ layout: v, dx: 0, dy: 0, tx: 0, ty: 0, sx: 0, sy: 0, ox: 0, oy: 0, device: true, phones: f.phones?.map((c) => ({ ...c, dx: 0, dy: 0, rz: 0 })) })}>{ic}{label}</button>
           ))}
         </div>
-        <p className="hint">The banner on top of your Google Play listing. Click the text or the phones on the canvas to edit them.</p>
+        <p className="hint">The banner on top of your Google Play listing. Click any text, the icon or a phone on the canvas to edit just that.</p>
       </Group>
       <BgGroup sc={project} />
     </>;
-    return <aside className="right">{head}{crumb(reset)}{body}{filePicker}</aside>;
+    return <aside className="right">{head}{crumb(actions)}{body}{filePicker}</aside>;
   }
 
   // ===== Slide =====
@@ -408,21 +534,6 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
   const hiddenNow = layer ? isHidden(s, layer) : false;
   const twDef = s.layout === "offset" ? 62 : 84;
   const ex = layer ? extraOf(s, layer) : undefined;
-  // Bọc phần đang bôi đen trong ô (tiêu đề/phụ đề/chữ tự do) bằng *…* (bấm lại khi đã bọc thì gỡ)
-  const highlight = (val: string, write: (v: string) => void) => {
-    const el = ta.current; if (!el) return;
-    let [a, b] = [el.selectionStart ?? 0, el.selectionEnd ?? 0];
-    if (a === b) { onFlash("Select some words first — or select them right on the canvas"); return; }
-    while (val[a] === " ") a++; while (b > a && val[b - 1] === " ") b--;
-    const wrapped = val[a - 1] === "*" && val[b] === "*";
-    write(wrapped ? val.slice(0, a - 1) + val.slice(a, b) + val.slice(b + 1) : val.slice(0, a) + "*" + val.slice(a, b) + "*" + val.slice(b));
-  };
-  const hlRow = (val: string, write: (v: string) => void) => (
-    <div className="hlrow">
-      <button className="gbtn" title="Select words in the box above, then click to color them" onMouseDown={(e) => e.preventDefault()} onClick={() => highlight(val, write)}><Highlighter />Highlight</button>
-      <span className="hint">or select words right on the canvas</span>
-    </div>
-  );
   const [lx, ly] = layer === "title" ? [s.tx, s.ty] : layer === "sub" ? [s.sx, s.sy] : layer === "device" ? [s.dx, s.dy] : layer === "device2" ? [s.bx, s.by] : [0, 0];
   const moved = layer && !ex ? !!(lx || ly) : !layer && !!(s.dx || s.dy || s.tx || s.ty || s.sx || s.sy);
   const resetPos = () => setSlide(layer === "title" ? { tx: 0, ty: 0 } : layer === "sub" ? { sx: 0, sy: 0 } : layer === "device" ? { dx: 0, dy: 0 } : layer === "device2" ? { bx: 0, by: 0 } : { dx: 0, dy: 0, tx: 0, ty: 0, sx: 0, sy: 0, bx: 0, by: 0 });
@@ -486,29 +597,7 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
       <TypeGroup sc={slideScope} />
     </>;
   } else if (ex && layer) {
-    const val = extraText(ex, p.loc), setEx = (patch: Partial<typeof ex>, tag?: string) => setSlide(patchExtra(s, layer, patch), tag);
-    body = <>
-      {hidNote}
-      <Group id="s-extra" title={ex.pill ? "Badge" : "Text"} right={<span className="mono">{LOCALES[p.loc]}</span>}>
-        <textarea ref={ta} className="field" rows={1} value={val} aria-label="Text" placeholder="Text" onChange={(e) => setEx({ t: { ...ex.t, [p.loc]: e.target.value } }, "xtext")} />
-        {hlRow(val, (v) => setEx({ t: { ...ex.t, [p.loc]: v } }))}
-      </Group>
-      <Group id="s-xstyle" title="Style">
-        <Prop label="Kind">
-          <Seg full value={ex.pill ? "pill" : "plain"} onChange={(v) => setEx({ pill: v === "pill" })} options={[{ v: "plain", label: "Text" }, { v: "pill", label: "Badge" }]} />
-        </Prop>
-        <Slider label="Size" value={ex.size} min={1.5} max={12} step={0.1} onChange={(size) => setEx({ size }, "xsize")} />
-        <Slider label="Weight" value={ex.weight} min={400} max={900} step={100} onChange={(weight) => setEx({ weight }, "xw")} />
-        {!ex.pill && <Prop label="Color" mark={!!ex.color} onReset={() => setEx({ color: "" })}>
-          <ColorField label="Text color" value={ex.color || (slideScope.t.tcolor || (slideScope.t.ink === "light" ? "#FFFFFF" : "#15151A"))} onChange={(color) => setEx({ color }, "xc")} />
-        </Prop>}
-        {ex.pill && <p className="hint">Badge color follows the highlight color in Typography.</p>}
-        <Prop label="Center">
-          <Num prefix="X" value={ex.x} step={0.5} onChange={(x) => setEx({ x }, "xx")} />
-          <Num prefix="Y" value={ex.y} step={0.5} onChange={(y) => setEx({ y }, "xy")} />
-        </Prop>
-      </Group>
-    </>;
+    body = <>{hidNote}{extraPanel(ex, (patch, tag) => setSlide(patchExtra(s, layer, patch), tag), slideScope.t)}</>;
   } else if (layer === "device") body = <>
     {hidNote}
     <Group id="s-shot" title="Screenshot" right={shown && <span className="mono">{imgMeta(shown) ? `${imgMeta(shown)!.w}×${imgMeta(shown)!.h}` : ""}</span>}>
@@ -527,25 +616,7 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
       )}
     </Group>
     {/* Căn ảnh trong màn: Fill (cắt cho kín) / Fit (hiện trọn, viền đen), phóng to, dời */}
-    {shown && (
-      <Group id="s-img" title="Image in screen" right={(s.ix || s.iy || (s.iz ?? 1) !== 1 || s.fit === "fit") ? <button className="gbtn" onClick={() => setSlide({ ix: 0, iy: 0, iz: 1, fit: "fill" })}><RotateCcw />Reset</button> : undefined}>
-        <Prop label="Mode">
-          <Seg full value={s.fit ?? "fill"} onChange={(fit: "fill" | "fit") => setSlide({ fit })} options={[{ v: "fill", label: "Fill" }, { v: "fit", label: "Fit" }]} />
-        </Prop>
-        <Slider label="Zoom" value={Math.round((s.iz ?? 1) * 100)} min={100} max={300} step={5} unit="%" onChange={(v) => setSlide({ iz: v / 100 }, "iz")} />
-        {/* Offset: -100..100 = mép này → mép kia của phần ảnh còn dư; trục không dư thì ẩn */}
-        {(pr[0] > 0 || pr[1] > 0) ? (
-          <Prop label="Offset">
-            {pr[0] > 0 && <Num prefix="X" value={s.ix ?? 0} step={5} min={-100} max={100} onChange={(ix) => setSlide({ ix }, "ix")} />}
-            {pr[1] > 0 && <Num prefix="Y" value={s.iy ?? 0} step={5} min={-100} max={100} onChange={(iy) => setSlide({ iy }, "iy")} />}
-          </Prop>
-        ) : <p className="hint">The whole screenshot is visible — zoom in to reposition it.</p>}
-        <button className={crop === "device" ? "primary sm wide" : "ghost sm wide"} onClick={() => onCrop(crop === "device" ? null : "device")}>
-          <Crop />{crop === "device" ? "Done adjusting" : "Adjust on canvas"}
-        </button>
-        {ratioNote}
-      </Group>
-    )}
+    {shown && imgFit("s-img", shown, s, (patch, tag) => setSlide(patch, tag), "device", currentKind, slideScope.t)}
     <DeviceControls v={s} scaleRange={[40, 100]} tag="s" onChange={(patch, tg) => setSlide(patch, tg)}
       right={<ApplyAll onClick={() => applyAll({ rx: s.rx, ry: s.ry, rz: s.rz, scale: s.scale }, "Device tilt & size")} />} />
     <FrameGroup sc={slideScope} />
@@ -563,6 +634,7 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
             <button className="primary sm" onClick={() => onReplace("img2")}><ImageUp />Use own image</button>
           </>)}
     </Group>
+    {s.img2 && imgFit("s-img2", s.img2, s.c2 ?? {}, (patch, tag) => setSlide({ c2: { ...s.c2, ...patch } }, tag), "device2", currentKind, slideScope.t)}
     <Group id="s-dev2" title="Device 2">
       <Prop label="Position">
         <Num prefix="X" value={s.bx ?? 0} step={0.5} onChange={(bx) => setSlide({ bx }, "bx")} />

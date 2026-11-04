@@ -9,7 +9,7 @@ import { loadProject, saveProject, askPersist } from "./storage";
 import { putImage, loadImages, gcImages } from "./images";
 
 // Mọi tham chiếu ảnh trong dự án (để nạp bộ đệm và dọn ảnh thừa)
-export const refsOf = (p: Project) => [...p.slides.flatMap((s) => [s.img, s.img2, ...Object.values(s.imgs ?? {})]), p.feature.iconImg].filter((x): x is string => !!x);
+export const refsOf = (p: Project) => [...p.slides.flatMap((s) => [s.img, s.img2, ...Object.values(s.imgs ?? {})]), p.feature.iconImg, ...(p.feature.phones ?? []).map((c) => c.img)].filter((x): x is string => !!x);
 // Dự án cũ lưu ảnh dạng dataURL ngay trong JSON → chuyển vào kho ảnh, thay bằng "img:<id>"
 async function moveImages(p: Project): Promise<Project> {
   const conv = async (v?: string | null) => (v && v.startsWith("data:") ? putImage(v).catch(() => v) : v);
@@ -20,7 +20,12 @@ const MAX = 60;
 
 // Dữ liệu cũ: hidden.text (ẩn cả khối chữ) → ẩn cả Headline + Subtitle; tx/ty trước dời cả khối → phụ đề nhận cùng độ dời
 function migrate(p: Project): Project {
-  return { ...p, slides: p.slides.map((s) => {
+  // Feature cũ: tx/ty dời cả khối chữ → icon + tagline nhận cùng độ dời; dx/dy dời cả cụm máy → chia cho từng máy; device=false → ẩn từng máy
+  const f = { ...p.feature };
+  if ((f.tx || f.ty) && f.ox === undefined && f.sx === undefined) { f.ox = f.sx = f.tx; f.oy = f.sy = f.ty; }
+  if ((f.dx || f.dy) && !f.phones) { f.phones = [0, 1, 2].map(() => ({ dx: f.dx, dy: f.dy })); f.dx = 0; f.dy = 0; }
+  if (f.device === false) { f.phones = [0, 1, 2].map((j) => ({ ...f.phones?.[j], hidden: true })); f.device = true; }
+  return { ...p, feature: f, slides: p.slides.map((s) => {
     const x = { ...s };
     if (x.hidden?.text) { const { text, ...h } = x.hidden; void text; x.hidden = { ...h, title: true, sub: true }; }
     if ((x.tx || x.ty) && x.sx === undefined && x.sy === undefined) { x.sx = x.tx; x.sy = x.ty; }

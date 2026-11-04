@@ -7,7 +7,8 @@
 // Thumbnail nằm trong khung CỐ ĐỊNH 40×64 px, slide được co vừa (contain) → hàng nào cũng cao bằng nhau dù iPhone hay iPad
 import { useState, type ReactNode } from "react";
 import { GripVertical, Trash2, Plus, CopyPlus, ImageUp, Upload, Image as ImageIcon, ChevronRight, Type, Smartphone, Eye, EyeOff, Heading, Pilcrow, Tag } from "lucide-react";
-import { layersOf, isHidden, type LayerId } from "@/lib/layers";
+import { layersOf, isHidden, fLayersOf, fIsHidden, fRemovable, type LayerId } from "@/lib/layers";
+import { featureShot } from "./SlideCanvas";
 import type { CanvasPick, LayerPick } from "./SlideCanvas";
 import type { Project } from "@/lib/types";
 import { LIMIT } from "@/lib/presets";
@@ -39,7 +40,7 @@ interface Props {
 
 // Icon theo loại layer
 export const layerIcon = (id: LayerId, name: string): ReactNode =>
-  id === "device" || id === "device2" ? <Smartphone /> : id === "title" ? <Heading /> : id === "sub" ? <Pilcrow /> : name === "Badge" ? <Tag /> : <Type />;
+  id.startsWith("device") ? <Smartphone /> : id === "icon" ? <ImageIcon /> : id === "title" ? <Heading /> : id === "sub" ? <Pilcrow /> : name === "Badge" ? <Tag /> : <Type />;
 
 // Hàng layer con (thụt vào dưới slide/feature)
 function LayerRow({ icon, name, sub, on, hidden, onClick, onToggle, onHover, onRemove }: { icon: ReactNode; name: string; sub: string; on: boolean; hidden?: boolean; onClick: () => void; onToggle?: () => void; onHover: (v: boolean) => void; onRemove?: () => void }) {
@@ -143,8 +144,14 @@ export function SlideList({ p, sel, tab, onPick, onFeature, onMove, onDelete, on
             </div>
             {tab === "feature" && (
               <div className="lchildren">
-                <LayerRow icon={<Type />} name="Text & icon" sub={p.feature.name || "—"} on={pick === "title"} onClick={() => onLayer(-1, "title")} onHover={(v) => onHover(v ? "title" : null)} />
-                {p.feature.device && <LayerRow icon={<Smartphone />} name="Devices" sub="2 phones" on={pick === "device"} onClick={() => onLayer(-1, "device")} onHover={(v) => onHover(v ? "device" : null)} />}
+                {fLayersOf(p.feature, p.loc, (j) => featureShot(p, j) + 1).map((l) => (
+                  <LayerRow key={l.id} icon={layerIcon(l.id, l.name)} name={l.name} sub={l.sub} on={pick === l.id} hidden={fIsHidden(p.feature, l.id)}
+                    onClick={() => onLayer(-1, l.id)} onToggle={() => onToggleHidden(-1, l.id)} onHover={(v) => onHover(v ? l.id : null)}
+                    onRemove={fRemovable(l.id) ? () => onRemoveLayer(-1, l.id) : undefined} />
+                ))}
+                <button className="litem ladd" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); onAddMenu(r.left, r.bottom + 4, -1); }}>
+                  <span className="lico"><Plus /></span><span className="lname">Add text</span>
+                </button>
               </div>
             )}
           </>

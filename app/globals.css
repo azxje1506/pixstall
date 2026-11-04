@@ -537,3 +537,5 @@ body.dragging .ed-hit.cropping { cursor: grabbing; }
 .trmock { position: absolute; inset: 0; font-size: .32px; }
 .trshot-meta { display: grid; gap: 4px; }
 .trempty { display: flex; gap: 8px; align-items: center; justify-content: center; color: var(--muted); margin: 0; }
+/* Feature graphic: khối chữ không bắt chuột (chỉ icon/tên/tagline bắt) */
+.ed-hit.text[data-pick="icon"] { border-radius: 2.6em; }

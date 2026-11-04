@@ -33,6 +33,7 @@ export interface Slide extends Tilt3D {
   fit?: "fill" | "fit"; ix?: number; iy?: number; iz?: number;
   // Máy thứ 2 (layout Duo): img2 = ảnh riêng (thiếu = lấy ảnh slide kế tiếp), bx,by = dời (em), brz = nghiêng thêm so với rz (mặc định 6)
   img2?: string | null; bx?: number; by?: number; brz?: number;
+  c2?: ImgFit; // căn ảnh riêng của máy 2 (khi dùng ảnh riêng img2)
   mock: number; // số màn mẫu khi chưa có ảnh
   // Dời vị trí khi kéo trên canvas (em = % bề ngang slide); thiếu = 0 (dự án cũ)
   dx?: number; dy?: number; // máy
@@ -73,6 +74,11 @@ export interface Theme {
   ssize: number; // cỡ phụ đề so với tiêu đề (0.3..0.8)
 }
 
+// Cách đặt ảnh trong màn máy: Fill/Fit, dời (−100..100 = % khoảng dư), phóng
+export interface ImgFit { fit?: "fill" | "fit"; ix?: number; iy?: number; iz?: number }
+// Một máy trong Feature graphic: dời riêng (em), nghiêng thêm (độ), ảnh riêng (thiếu = ảnh slide liên kết), ẩn
+export interface PhoneCfg extends ImgFit { dx?: number; dy?: number; rz?: number; img?: string; hidden?: boolean }
+
 // Layer chữ tự do (thêm bằng "+ Add text"): vị trí tâm x,y (em), chữ theo ngôn ngữ
 export interface TextItem {
   id: string;
@@ -98,6 +104,12 @@ export interface Feature extends Tilt3D {
   tx?: number; ty?: number; // dời khối icon + chữ (em)
   front?: "text" | "device";
   iconImg?: string; // icon app thật (img ref); có thì thay icon Lucide
+  // Mỗi phần là 1 layer riêng: tên app (tx,ty) · tagline (sx,sy) · icon (ox,oy); chữ theo ngôn ngữ ở t (en = name/tagline)
+  t?: Record<string, [string, string]>;
+  sx?: number; sy?: number; ox?: number; oy?: number;
+  hidden?: { title?: boolean; sub?: boolean; icon?: boolean };
+  extras?: TextItem[]; // chữ tự do / badge thêm vào feature graphic
+  phones?: PhoneCfg[]; // cấu hình riêng từng máy (index theo thứ tự máy)
   layout?: "split" | "center" | "phones"; // chữ trái + máy phải · chữ giữa + 2 máy 2 bên · chỉ 3 máy
   shots?: string[]; // id slide cho từng máy (thiếu = slide theo thứ tự)
 }

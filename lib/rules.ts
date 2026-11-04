@@ -17,6 +17,8 @@ export const imgFor = (s: Slide | undefined, loc: string) => (s ? s.imgs?.[loc] 
 export const usedLocales = (p: Project) => {
   const set = new Set(["en"]);
   for (const s of p.slides) { Object.keys(s.t).forEach((l) => set.add(l)); Object.keys(s.imgs ?? {}).forEach((l) => set.add(l)); for (const x of s.extras ?? []) Object.keys(x.t).forEach((l) => set.add(l)); }
+  Object.keys(p.feature.t ?? {}).forEach((l) => set.add(l));
+  for (const x of p.feature.extras ?? []) Object.keys(x.t).forEach((l) => set.add(l));
   return [...set];
 };
 

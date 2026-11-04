@@ -12,10 +12,10 @@ import { createPortal } from "react-dom";
 import type { CSSProperties, ReactNode, PointerEvent as RPE, KeyboardEvent as RKE, FocusEvent as RFE } from "react";
 import { Highlighter } from "lucide-react";
 import { FEATURE_ICONS } from "./icons";
-import type { Project, SizePreset, Theme } from "@/lib/types";
+import type { Project, SizePreset, Theme, TextItem } from "@/lib/types";
 import { FONTS, FEATURE_SIZE } from "@/lib/presets";
 import { textOf, themeOf, richParts, imgFor } from "@/lib/rules";
-import { posOf, withPos, patchExtra, extraText, isDevice, isLayer, type LayerId } from "@/lib/layers";
+import { posOf, withPos, patchExtra, extraText, isDevice, isLayer, featText, setFeatText, phoneOf, phoneIdx, setPhone, PHONE_IDS, type LayerId } from "@/lib/layers";
 import { imgSrc, imgMeta } from "@/lib/images";
 import type { Slide } from "@/lib/types";
 import { mockScreen } from "@/lib/mocks";
@@ -45,7 +45,9 @@ export interface CanvasEdit {
   onCrop?: (l: LayerId | null) => void;
 }
 // Tay cầm của một layer máy: đổi cỡ (scale) và xoay (rot, ghi vào khoá key)
-type Tf = { scale?: { v: number; min: number; max: number; mul: number }; rot?: { v: number; key: string } };
+type Tf = { scale?: { v: number; min: number; max: number; mul: number }; rot?: { v: number; set: (a: number) => Record<string, unknown> } };
+// Căn ảnh của một layer máy: v = [ix, iy, khoảng dư x, khoảng dư y]; set(ix, iy) = patch ghi lại
+type CropInfo = { v: [number, number, number, number]; set: (ix: number, iy: number) => Record<string, unknown> };
 type Rect = { l: number; t: number; r: number; b: number };
 // Lớp phủ khi sửa (em): đường gióng x/y, thước đo khoảng cách m, nhãn số tip
 type Guides = { x?: number; y?: number; m?: { x1: number; y1: number; x2: number; y2: number; label: string }; tip?: { x: number; y: number; text: string } };
@@ -171,7 +173,7 @@ function toggleHL(el: HTMLElement, hl: string) {
 // pos(l) = vị trí hiện tại của layer; move(l, x, y) = ghi vị trí mới. Chữ tự do (x:…) lưu toạ độ tâm nên không hút về 0
 // tf(l) = tay cầm đổi cỡ/xoay của layer máy; crop(l) = [ix, iy] hiện tại nếu layer đó căn ảnh được (null = không)
 function useEditKit(edit: CanvasEdit | undefined, k: number, hEm: number, pos: (l: LayerId) => [number, number], move: (l: LayerId, x: number, y: number) => void,
-  tf: (l: LayerId) => Tf | null, pxPerEm: number, crop: (l: LayerId) => [number, number, number, number] | null = () => null) {
+  tf: (l: LayerId) => Tf | null, pxPerEm: number, crop: (l: LayerId) => CropInfo | null = () => null) {
   const [g, setG] = useState<Guides>({});
   const [editing, setEditing] = useState<string | null>(null); // id dòng chữ đang gõ
   const [bar, setBar] = useState<{ x: number; y: number } | null>(null); // thanh nổi Highlight (toạ độ màn hình)
@@ -232,9 +234,9 @@ function useEditKit(edit: CanvasEdit | undefined, k: number, hEm: number, pos: (
     const c0 = edit.crop === what ? crop(what) : null;
     if (c0) {
       // c0 = [ix, iy, khoảng dời x, khoảng dời y]; trục không còn phần dư (khoảng = 0) thì đứng yên
-      const scr = el.querySelector(".scr")!.getBoundingClientRect(), [ix0, iy0, rx, ry] = c0;
+      const scr = el.querySelector(".scr")!.getBoundingClientRect(), [ix0, iy0, rx, ry] = c0.v;
       const step = (px: number, size: number, range: number) => (range ? ((px / size) * 100 / range) * 100 : 0);
-      startDrag(e, k, (mx, my) => edit.onPatch({ ix: r1(clamp(ix0 + step(mx * k, scr.width, rx), -100, 100)), iy: r1(clamp(iy0 + step(my * k, scr.height, ry), -100, 100)) }, "pan"));
+      startDrag(e, k, (mx, my) => edit.onPatch(c0.set(r1(clamp(ix0 + step(mx * k, scr.width, rx), -100, 100)), r1(clamp(iy0 + step(my * k, scr.height, ry), -100, 100))), "pan"));
       return;
     }
     const r0 = rectEm(el, R, k), cc = [(r0.l + r0.r) / 2, (r0.t + r0.b) / 2];
@@ -296,7 +298,7 @@ function useEditKit(edit: CanvasEdit | undefined, k: number, hEm: number, pos: (
             for (const t of [0, 15, -15]) if (Math.abs(a - t) < 2) a = t;
             a = Math.round(clamp(a, -45, 45));
             setG({ tip: { x: px + mx, y: py + my, text: `${a}°` } });
-            edit.onPatch({ [rot.key]: a }, "drag-rot");
+            edit.onPatch(rot.set(a), "drag-rot");
           }, () => setG({}));
         }} />
       )}
@@ -352,6 +354,19 @@ function Shot({ img, mock, c, thumb, sr }: { img?: string | null; mock: number; 
     </div>
   );
 }
+// Chữ tự do / badge (slide và feature dùng chung): đặt theo tâm (x,y); badge nền = màu tô, chữ đậm tối
+type Kit = ReturnType<typeof useEditKit>;
+function renderExtras(items: TextItem[] | undefined, L: string, t: Theme, ink: string, z: number, kit: Kit, commit: (x: TextItem, v: string) => void) {
+  return (items ?? []).map((x) => {
+    const id = `x:${x.id}` as LayerId, X = kit.lineOf(id, extraText(x, L), x.pill ? t.c1 : t.hl, (v) => commit(x, v));
+    return (
+      <div key={x.id} {...kit.hit(id)} style={{ position: "absolute", left: `${x.x}em`, top: `${x.y}em`, transform: "translate(-50%,-50%)", zIndex: z, maxWidth: "88em", textAlign: "center", fontFamily: FONTS[t.font], whiteSpace: "nowrap", ...(x.hidden ? { visibility: "hidden" as const } : {}) }}>
+        <div key={X.key} {...X.props} style={{ fontSize: `${x.size}em`, fontWeight: x.weight, lineHeight: 1.2, color: x.pill ? "#15151A" : x.color || ink, ...(x.pill ? { background: t.hl, padding: ".35em .9em", borderRadius: "999px", display: "inline-block" } : {}) }}>{X.children}</div>
+      </div>
+    );
+  });
+}
+
 // Tỉ lệ rộng/cao của màn trong máy (trừ viền) theo loại máy + theme
 export const screenRatio = (kind: "phone" | "tablet", t: Theme) => { const bz = t.frame === "none" ? 0 : t.bezel / 100; return (1 - 2 * bz) / (ASPECT[kind] - 2 * bz); };
 // Ảnh của slide i theo ngôn ngữ loc (máy chính, kèm cách căn của slide đó)
@@ -370,10 +385,17 @@ export function SlideCanvas({ p, index, width, size, loc, edit }: { p: Project; 
     (l, x, y) => s && edit?.onPatch(withPos(s, l, x, y), "drag-" + l),
     // Đổi cỡ: Duo dùng chung s.scale cho 2 máy (bề ngang máy = scale·0.66); xoay máy 2 ghi vào brz (độ nghiêng thêm)
     (l) => !s ? null : l === "device2"
-      ? { scale: { v: s.scale, min: 40, max: 100, mul: 1 / 0.66 }, rot: { v: s.brz ?? 6, key: "brz" } }
-      : { scale: { v: s.scale, min: 40, max: 100, mul: duo ? 1 / 0.66 : centered ? 2 : 1 }, rot: { v: s.rz, key: "rz" } },
+      ? { scale: { v: s.scale, min: 40, max: 100, mul: 1 / 0.66 }, rot: { v: s.brz ?? 6, set: (a: number) => ({ brz: a }) } }
+      : { scale: { v: s.scale, min: 40, max: 100, mul: duo ? 1 / 0.66 : centered ? 2 : 1 }, rot: { v: s.rz, set: (a: number) => ({ rz: a }) } },
     size.w / 100,
-    (l) => { const im = imgFor(s, L); return s && l === "device" && im ? [s.ix ?? 0, s.iy ?? 0, ...panRange(im, s, screenRatio(size.kind, t))] as [number, number, number, number] : null; });
+    // Căn ảnh: máy chính (ảnh theo ngôn ngữ) và máy 2 của Duo khi dùng ảnh riêng (c2)
+    (l): CropInfo | null => {
+      if (!s) return null;
+      const r0 = screenRatio(size.kind, t), im = imgFor(s, L);
+      if (l === "device" && im) return { v: [s.ix ?? 0, s.iy ?? 0, ...panRange(im, s, r0)], set: (ix, iy) => ({ ix, iy }) };
+      if (l === "device2" && s.img2) { const c = s.c2 ?? {}; return { v: [c.ix ?? 0, c.iy ?? 0, ...panRange(s.img2, c, r0)], set: (ix, iy) => ({ c2: { ...s.c2, ix, iy } }) }; }
+      return null;
+    });
   const titleRaw = s ? textOf(s, L)[0] : "";
   useLayoutEffect(() => {
     if (!edit) return;
@@ -420,7 +442,7 @@ export function SlideCanvas({ p, index, width, size, loc, edit }: { p: Project; 
         <>
           {!s.hidden?.device2 && (
             <Device {...dev} hit={hit("device2")} handle={hd("device2")} rz={s.rz + (s.brz ?? 6)} w={w} x={100 - 5 - w + (s.bx ?? 0)} y={below + 8 + (s.by ?? 0)} z={1}>
-              {s.img2 ? <Shot img={s.img2} mock={0} thumb={th} sr={sr} /> : screenOf(p, (index + 1) % n, sr, th, L)}
+              {s.img2 ? <Shot img={s.img2} mock={0} c={s.c2} thumb={th} sr={sr} /> : screenOf(p, (index + 1) % n, sr, th, L)}
             </Device>
           )}
           {!s.hidden?.device && <Device {...dev} handle={hd("device")} rz={s.rz - 4} w={w} x={5 + dx} y={below + dy}>{screenOf(p, index, sr, th, L)}</Device>}
@@ -472,15 +494,7 @@ export function SlideCanvas({ p, index, width, size, loc, edit }: { p: Project; 
         </div>
       )}
       {/* Chữ tự do: đặt theo tâm (x,y); dạng pill thì nền = màu tô, chữ đậm tối */}
-      {(s.extras ?? []).map((x) => {
-        const id = `x:${x.id}` as LayerId, val = extraText(x, L);
-        const X = lineOf(id, val, x.pill ? t.c1 : t.hl, (v) => edit?.onPatch(patchExtra(s, id, { t: { ...x.t, [L]: v } }), ""));
-        return (
-          <div key={x.id} {...hit(id)} style={{ position: "absolute", left: `${x.x}em`, top: `${x.y}em`, transform: "translate(-50%,-50%)", zIndex: zText, maxWidth: "88em", textAlign: "center", fontFamily: FONTS[t.font], whiteSpace: "nowrap", ...vis(x.hidden) }}>
-            <div key={X.key} {...X.props} style={{ fontSize: `${x.size}em`, fontWeight: x.weight, lineHeight: 1.2, color: x.pill ? "#15151A" : x.color || ink, ...(x.pill ? { background: t.hl, padding: ".35em .9em", borderRadius: "999px", display: "inline-block" } : {}) }}>{X.children}</div>
-          </div>
-        );
-      })}
+      {renderExtras(s.extras, L, t, ink, zText, kit, (x, v) => edit?.onPatch(patchExtra(s, `x:${x.id}` as LayerId, { t: { ...x.t, [L]: v } }), ""))}
       {(duo || !s.hidden?.device) && devices}
       {kit.guides}
     </div>
@@ -499,55 +513,78 @@ export const featureShot = (p: Project, j: number) => {
 export function FeatureCanvas({ p, width, edit, loc }: { p: Project; width: number; edit?: CanvasEdit; loc?: string }) {
   const f = p.feature, t = p.theme, k = width / 100, L = loc ?? p.loc;
   const hEm = (100 * FEATURE_SIZE.h) / FEATURE_SIZE.w, lay = f.layout ?? "split";
-  const kit = useEditKit(edit, k, hEm, (l) => posOf(f, l), (l, x, y) => edit?.onPatch(withPos(f, l, x, y), "drag-" + l),
-    () => ({ scale: { v: f.scale, min: 12, max: 30, mul: 1 }, rot: { v: f.rz, key: "rz" } }), FEATURE_SIZE.w / 100);
   const th = width < 240, sr = screenRatio("phone", t);
+  // Độ xoay gốc của máy j theo bố cục; phones[j].rz cộng thêm. Kéo nút xoay ghi phần chênh vào phones[j].rz
+  const baseRz = (j: number) => (lay === "center" ? (j === 0 ? -(f.rz + 6) : f.rz + 6) : lay === "phones" ? [f.rz, f.rz - 8, f.rz + 8][j] : j === 1 ? f.rz + 4 : f.rz);
+  const kit = useEditKit(edit, k, hEm, (l) => posOf(f, l), (l, x, y) => edit?.onPatch(withPos(f, l, x, y), "drag-" + l),
+    (l) => {
+      const j = phoneIdx(l); if (j < 0) return null;
+      const b = baseRz(j);
+      return { scale: { v: f.scale, min: 12, max: 30, mul: 1 }, rot: { v: b + (phoneOf(f, j).rz ?? 0), set: (a: number) => ({ phones: setPhone(f, j, { rz: a - b }) }) } };
+    },
+    FEATURE_SIZE.w / 100,
+    (l): CropInfo | null => {
+      const j = phoneIdx(l), c = j >= 0 ? phoneOf(f, j) : null;
+      return c?.img ? { v: [c.ix ?? 0, c.iy ?? 0, ...panRange(c.img, c, sr)], set: (ix, iy) => ({ phones: setPhone(f, j, { ix, iy }) }) } : null;
+    });
   const ink = t.tcolor || (t.ink === "light" ? "#fff" : "#15151A");
   const Icon = FEATURE_ICONS[f.icon] ?? FEATURE_ICONS.sprout;
-  const dw = f.scale, dx = f.dx ?? 0, dy = f.dy ?? 0, dh = dw * ASPECT.phone;
-  const dev = { kind: "phone" as const, store: "play" as const, theme: t, rx: f.rx, ry: f.ry, rz: f.rz, hit: { style: { pointerEvents: "auto" as const } } };
-  const FN = kit.lineOf("fn", f.name, t.hl, (name) => edit?.onPatch({ name }, ""));
-  const FT = kit.lineOf("ft", f.tagline, t.hl, (tagline) => edit?.onPatch({ tagline }, ""));
-  const center = lay === "center";
-  const phone = (j: number, x: number, y: number, extra: Partial<typeof dev> & { z?: number } = {}) => (
-    <Device key={j} {...dev} {...extra} w={dw} x={x} y={y}>{screenOf(p, featureShot(p, j), sr, th, L)}</Device>
-  );
+  const dw = f.scale, dh = dw * ASPECT.phone, dx = f.dx ?? 0, dy = f.dy ?? 0;
+  const dev = { kind: "phone" as const, store: "play" as const, theme: t, rx: f.rx, ry: f.ry, rz: f.rz };
+  const [name, tag] = featText(f, L), hid = f.hidden ?? {};
+  const FN = kit.lineOf("title", name, t.hl, (v) => edit?.onPatch(setFeatText(f, L, 0, v), ""));
+  const FT = kit.lineOf("sub", tag, t.hl, (v) => edit?.onPatch(setFeatText(f, L, 1, v), ""));
+  const center = lay === "center", zText = f.front === "device" ? 0 : 3;
+  const off = (x?: number, y?: number) => (x || y ? `translate(${x ?? 0}em,${y ?? 0}em)` : undefined);
+  const vis = (h?: boolean): CSSProperties => (h ? { visibility: "hidden" } : {});
 
-  // Khung + vị trí các máy theo bố cục (em, so với khung bọc)
+  // Một máy = 1 layer (device/device2/device3): ảnh riêng hoặc ảnh slide liên kết; khung bọc không bắt chuột, chỉ máy bắt
+  const phone = (j: number, x: number, y: number, extra: { ry?: number; z?: number } = {}) => {
+    const c = phoneOf(f, j), id = PHONE_IDS[j], h = kit.hit(id);
+    if (c.hidden) return null;
+    return (
+      <Device key={j} {...dev} ry={extra.ry ?? f.ry} z={extra.z} rz={baseRz(j) + (c.rz ?? 0)} w={dw} x={x + (c.dx ?? 0)} y={y + (c.dy ?? 0)}
+        hit={h ? { ...h, style: { pointerEvents: "auto" } } : undefined} handle={edit?.sel === id ? kit.handle : undefined}>
+        {c.img ? <Shot img={c.img} mock={0} c={c} thumb={th} sr={sr} /> : screenOf(p, featureShot(p, j), sr, th, L)}
+      </Device>
+    );
+  };
   let box: CSSProperties, phones: ReactNode;
   if (lay === "center") {
     box = { left: `${4 + dx}em`, top: `${(hEm - dh) / 2 + 6 + dy}em`, width: "92em", height: `${dh}em` };
-    phones = <>{phone(0, 0, 0, { ry: -f.ry, rz: -(f.rz + 6) })}{phone(1, 92 - dw, 0, { rz: f.rz + 6 })}</>;
+    phones = <>{phone(0, 0, 0, { ry: -f.ry })}{phone(1, 92 - dw, 0)}</>;
   } else if (lay === "phones") {
     box = { left: `${50 - dw * 1.4 + dx}em`, top: `${(hEm - dh) / 2 - 1 + dy}em`, width: `${dw * 2.8}em`, height: `${dh + 6}em` };
-    phones = <>{phone(1, 0, 6, { rz: f.rz - 8, z: 1 })}{phone(2, dw * 1.8, 6, { rz: f.rz + 8, z: 1 })}{phone(0, dw * 0.9, 0, { z: 3 })}</>;
+    phones = <>{phone(1, 0, 6, { z: 1 })}{phone(2, dw * 1.8, 6, { z: 1 })}{phone(0, dw * 0.9, 0, { z: 3 })}</>;
   } else {
     box = { left: `${100 - 6 - dw * 1.85 + dx}em`, top: `${(hEm - dh) / 2 - 1.5 + dy}em`, width: `${dw * 1.85}em`, height: `${dh + 4.5}em` };
-    phones = <>{phone(1, dw * 0.85, 0, { rz: f.rz + 4, z: 1 })}{phone(0, 0, 4.5)}</>;
+    phones = <>{phone(1, dw * 0.85, 0, { z: 1 })}{phone(0, 0, 4.5)}</>;
   }
-  const icon = (
-    <div style={{ width: "10em", height: "10em", borderRadius: "2.6em", background: "#fff", display: "grid", placeItems: "center", overflow: "hidden", boxShadow: "0 .8em 2.4em rgba(0,0,0,.16)", color: t.c1, margin: center ? "0 auto" : undefined }}>
-      {f.iconImg ? <img src={imgSrc(f.iconImg, th)} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : <Icon style={{ width: "5.4em", height: "5.4em" }} strokeWidth={2} />}
-    </div>
-  );
   return (
     <div data-cv {...kit.root} style={{ position: "relative", overflow: "hidden", width, height: (width * FEATURE_SIZE.h) / FEATURE_SIZE.w, fontSize: width / 100, ...background(t, 0, hEm, 1) }}>
       {lay !== "phones" && (
-        <div {...kit.hit("title")} style={{ position: "absolute", top: "50%", color: ink, fontFamily: FONTS[t.font], zIndex: f.front === "device" ? 0 : 3,
-          ...(center
-            ? { left: "50%", width: "52em", textAlign: "center", transform: `translate(calc(-50% + ${f.tx ?? 0}em), calc(-50% + ${f.ty ?? 0}em))` }
-            : { left: "7em", width: "48em", transform: `translate(${f.tx ?? 0}em, calc(-50% + ${f.ty ?? 0}em))` }) }}>
-          {icon}
-          <h2 key={FN.key} {...FN.props} style={{ fontSize: center ? "6em" : "7em", margin: ".3em 0 0", fontWeight: 800, letterSpacing: "-.03em", lineHeight: 1 }}>{FN.children}</h2>
-          <p key={"t" + FT.key} {...FT.props} style={{ fontSize: "3em", margin: ".35em 0 0", opacity: 0.88, fontWeight: 500 }}>{FT.children}</p>
+        // Khối chữ: chỉ để xếp hàng (không bắt chuột); icon / tên / tagline là 3 layer, mỗi cái dời riêng
+        <div style={{ position: "absolute", top: "50%", color: ink, fontFamily: FONTS[t.font], zIndex: zText, pointerEvents: "none",
+          ...(center ? { left: "50%", width: "52em", textAlign: "center", transform: "translate(-50%,-50%)" } : { left: "7em", width: "48em", transform: "translateY(-50%)" }) }}>
+          <div {...kit.hit("icon")} style={{ position: "relative", width: "fit-content", margin: center ? "0 auto" : undefined, pointerEvents: "auto", transform: off(f.ox, f.oy), ...vis(hid.icon) }}>
+            <div style={{ width: "10em", height: "10em", borderRadius: "2.6em", background: "#fff", display: "grid", placeItems: "center", overflow: "hidden", boxShadow: "0 .8em 2.4em rgba(0,0,0,.16)", color: t.c1 }}>
+              {f.iconImg ? <img src={imgSrc(f.iconImg, th)} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : <Icon style={{ width: "5.4em", height: "5.4em" }} strokeWidth={2} />}
+            </div>
+          </div>
+          {name && (
+            <div {...kit.hit("title")} style={{ position: "relative", pointerEvents: "auto", transform: off(f.tx, f.ty), ...vis(hid.title) }}>
+              <h2 key={FN.key} {...FN.props} style={{ fontSize: center ? "6em" : "7em", margin: ".3em 0 0", fontWeight: 800, letterSpacing: "-.03em", lineHeight: 1 }}>{FN.children}</h2>
+            </div>
+          )}
+          {tag && (
+            <div {...kit.hit("sub")} style={{ position: "relative", pointerEvents: "auto", transform: off(f.sx, f.sy), ...vis(hid.sub) }}>
+              <p key={"t" + FT.key} {...FT.props} style={{ fontSize: "3em", margin: ".35em 0 0", opacity: 0.88, fontWeight: 500 }}>{FT.children}</p>
+            </div>
+          )}
         </div>
       )}
-      {f.device && (
-        <div {...kit.hit("device")} style={{ position: "absolute", zIndex: 2, pointerEvents: "none", ...box }}>
-          {phones}
-          {kit.handle}
-        </div>
-      )}
+      {renderExtras(f.extras, L, t, ink, zText, kit, (x, v) => edit?.onPatch(patchExtra(f, `x:${x.id}` as LayerId, { t: { ...x.t, [L]: v } }), ""))}
+      {f.device && <div style={{ position: "absolute", zIndex: 2, pointerEvents: "none", ...box }}>{phones}</div>}
       {kit.guides}
     </div>
   );
