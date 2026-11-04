@@ -35,6 +35,14 @@ export function sizeWarnings(z: SizePreset): string[] {
 
 export type Issue = { level: "ok" | "warn"; msg: string; slide?: number }; // slide = index để bấm nhảy tới
 
+// Độ tương phản WCAG giữa 2 màu HEX (1..21); dùng để cảnh báo chữ khó đọc trên nền 1 màu
+const lum = (hex: string) => {
+  const m = hex.replace("#", "");
+  const c = [0, 2, 4].map((i) => parseInt(m.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+};
+export const contrast = (a: string, b: string) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m); return (x + 0.05) / (y + 0.05); };
+
 export function checkProject(p: Project): Issue[] {
   const out: Issue[] = [];
   const n = p.slides.length, [mn, mx] = LIMIT[p.store], z = currentSize(p);
@@ -45,6 +53,10 @@ export function checkProject(p: Project): Issue[] {
     const title = plain(textOf(s, p.loc)[0]);
     if (title.length > 34) out.push({ level: "warn", msg: `Slide ${i + 1}: headline is long, may wrap to 3+ lines`, slide: i });
     if (!title.trim()) out.push({ level: "warn", msg: `Slide ${i + 1}: headline is empty`, slide: i });
+    // Chữ khó đọc: chỉ kiểm được khi nền là 1 màu (gradient/ảnh thì bỏ qua)
+    const t = themeOf(p, s);
+    if (t.bg === "color" && !s.hidden?.text && contrast(t.tcolor || (t.ink === "light" ? "#FFFFFF" : "#15151A"), t.solid) < 3)
+      out.push({ level: "warn", msg: `Slide ${i + 1}: text is hard to read on this background`, slide: i });
   });
   if (p.loc !== "en") {
     const miss = p.slides.filter((s) => !s.t[p.loc]).length;

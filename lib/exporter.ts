@@ -46,7 +46,13 @@ export async function exportZip(p: Project, o: ExportOptions, onProgress: (done:
     const node = host.firstElementChild as HTMLElement;
     await Promise.all([...node.querySelectorAll("img")].map((im) => im.decode().catch(() => {})));
     await wait();
-    const canvas = await toCanvas(node, { width: w, height: h, canvasWidth: w, canvasHeight: h, pixelRatio: 1, backgroundColor: "#ffffff" });
+    // KHÔNG truyền backgroundColor: html-to-image gán nó thẳng lên node gốc → đè mất nền "Color" của slide.
+    // Chụp xong mới trải lên nền trắng (bỏ vùng trong suốt) để ảnh luôn đặc, không alpha
+    const shot = await toCanvas(node, { width: w, height: h, canvasWidth: w, canvasHeight: h, pixelRatio: 1 });
+    const canvas = document.createElement("canvas");
+    canvas.width = w; canvas.height = h;
+    const cx = canvas.getContext("2d")!;
+    cx.fillStyle = "#ffffff"; cx.fillRect(0, 0, w, h); cx.drawImage(shot, 0, 0);
     if (o.format === "jpg") {
       return new Promise((res, rej) => canvas.toBlob((b) => (b ? res(b) : rej(new Error("Render failed"))), "image/jpeg", 0.95));
     }
