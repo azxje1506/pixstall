@@ -2,19 +2,23 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useProject } from "@/lib/useProject";
-import type { SizePreset, Slide, Feature } from "@/lib/types";
+import type { SizePreset, Slide, Feature, Project } from "@/lib/types";
 import { uid } from "@/lib/presets";
 import { sizesOf, allSizes } from "@/lib/rules";
 import { TopBar } from "./TopBar";
 import { SlideList } from "./SlideList";
 import { Stage } from "./Stage";
 import { Inspector } from "./Inspector";
-import { SizeDialog, ExportDialog, KeysDialog } from "./Dialogs";
+import { SizeDialog, ExportDialog, KeysDialog, ReplaceDialog } from "./Dialogs";
+import { packProject, unpackProject, fileNameOf, FILE_EXT } from "@/lib/projectFile";
+import { download } from "@/lib/exporter";
+import { normalizeProject } from "@/lib/useProject";
+import { sampleProject } from "@/lib/presets";
 import { TranslateDialog } from "./TranslateDialog";
 import type { CanvasPick, LayerPick } from "./SlideCanvas";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { putImage } from "@/lib/images";
-import { Crop, CopyPlus, Trash2, ImageUp, RotateCcw, BringToFront, SendToBack, Heading, Type, Pilcrow, Tag } from "lucide-react";
+import { FilePlus2, FolderOpen, Save, Crop, CopyPlus, Trash2, ImageUp, RotateCcw, BringToFront, SendToBack, Heading, Type, Pilcrow, Tag } from "lucide-react";
 import { isFeat, fToggleHidden, fRemoveLayer, fLayerName, fCanAdd, setFeatText, phoneIdx, phoneOf, nameOfLayer, isLayer, isText, isDevice, posOf, withPos, toggleHidden as toggleH, removeLayer, layerName, canAdd, type LayerId } from "@/lib/layers";
 import { currentSize, themeOf, textOf } from "@/lib/rules";
 
@@ -121,6 +125,52 @@ export default function Editor() {
   };
   const [addMenu, setAddMenu] = useState<{ x: number; y: number; i: number } | null>(null);
 
+  // --- File dự án .pixstall: lưu / mở / tạo mới ---
+  const openInput = useRef<HTMLInputElement>(null);
+  const [fileMenu, setFileMenu] = useState<{ x: number; y: number } | null>(null);
+  const [confirm, setConfirm] = useState<{ kind: "open"; file: File } | { kind: "new" } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const savedRef = useRef<Project | null>(null); // dự án lúc lưu file gần nhất (để biết đã có thay đổi chưa)
+  const curName = p.name || p.feature.name || "Untitled";
+  const saveFile = async () => {
+    if (busy) return; setBusy(true);
+    try {
+      const { blob, images, missing } = await packProject(p);
+      download(blob, fileNameOf(p));
+      savedRef.current = p;
+      flash(`Saved ${fileNameOf(p)} · ${images} image${images === 1 ? "" : "s"}${missing ? ` · ${missing} missing` : ""}`);
+    } catch { flash("Couldn't save the project file"); }
+    setBusy(false);
+  };
+  const doOpen = async (file: File) => {
+    setConfirm(null); setBusy(true);
+    try {
+      const proj = normalizeProject(await unpackProject(file));
+      update(() => proj);
+      savedRef.current = null;
+      setSel(0); setTab("slide"); setPick(null); setWelcome(false);
+      flash(`Opened ${proj.name || file.name.replace(FILE_EXT, "")}`, true);
+    } catch (e) { flash(e instanceof Error ? e.message : "Couldn't open that file"); }
+    setBusy(false);
+  };
+  const doNew = () => {
+    setConfirm(null);
+    update(() => ({ ...sampleProject(), name: "Untitled" }));
+    savedRef.current = null;
+    setSel(0); setTab("slide"); setPick(null); setWelcome(true);
+    flash("New project", true);
+  };
+  // Dự án đang là mẫu chưa đụng tới (hoặc vừa lưu file, chưa sửa) thì khỏi hỏi
+  const untouched = () => savedRef.current === p || (!p.name && p.slides.every((s) => !s.img) && !canUndo);
+  const askOpen = (file: File) => (untouched() ? doOpen(file) : setConfirm({ kind: "open", file }));
+  const askNew = () => (untouched() ? doNew() : setConfirm({ kind: "new" }));
+  const fileItems: MenuItem[] = [
+    { label: "New project", icon: <FilePlus2 />, onClick: askNew },
+    { label: "Open…", icon: <FolderOpen />, kbd: "Ctrl O", onClick: () => openInput.current?.click() },
+    "sep",
+    { label: "Save to file", icon: <Save />, kbd: "Ctrl S", disabled: busy, onClick: saveFile },
+  ];
+
   // Sửa slide đang chọn (dùng chung cho canvas + phím nhích)
   const patchSlide = (patch: Partial<Slide>, tag = "") => update((d) => ({ ...d, slides: d.slides.map((s, i) => (i === idx ? { ...s, ...patch } : s)) }), tag);
   const patchFeature = (patch: Partial<Feature>, tag = "") => update((d) => ({ ...d, feature: { ...d.feature, ...patch } }), tag);
@@ -132,6 +182,12 @@ export default function Editor() {
       const t = e.target as HTMLElement;
       const typing = t?.closest("input,textarea,select") || t?.isContentEditable;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") { if (typing) return; e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+      // Ctrl/⌘+S lưu file, Ctrl/⌘+O mở file — chặn hộp lưu trang của trình duyệt; đang gõ thì chốt ô trước
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && (e.key.toLowerCase() === "s" || e.key.toLowerCase() === "o")) {
+        e.preventDefault(); (document.activeElement as HTMLElement)?.blur?.();
+        if (e.key.toLowerCase() === "s") setTimeout(saveFile, 0); else openInput.current?.click();
+        return;
+      }
       if (typing) return;
       if (e.key === "?" && !dialog) { e.preventDefault(); setDialog("keys"); return; }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "d") { e.preventDefault(); if (tab === "slide") dupAt(idx); return; }
@@ -203,6 +259,9 @@ export default function Editor() {
   };
 
   const addFiles = async (files: FileList) => {
+    // Thả file .pixstall vào app → mở dự án thay vì thêm ảnh
+    const proj = [...files].find((f) => f.name.toLowerCase().endsWith(FILE_EXT));
+    if (proj) return askOpen(proj);
     const imgs = (await Promise.all([...files].filter((f) => f.type.startsWith("image/")).map(readImg))).filter((x): x is string => !!x);
     if (!imgs.length) return;
     setWelcome(false);
@@ -252,7 +311,7 @@ export default function Editor() {
           update((d) => ({ ...d, sizeId, store: st }));
           if (st === "ios") setTab("slide");
         }}
-        onName={(name) => update((d) => ({ ...d, name }))} onKeys={() => setDialog("keys")} onTranslate={() => setDialog("tr")}
+        onName={(name) => update((d) => ({ ...d, name }))} onKeys={() => setDialog("keys")} onTranslate={() => setDialog("tr")} onFileMenu={(x, y) => setFileMenu({ x, y })}
         onLoc={(loc) => update((d) => ({ ...d, loc }))}
         onView={setView} onUndo={undo} onRedo={redo} onDark={() => setDark(!dark)}
         onExport={() => setDialog("export")} onAddSize={() => setDialog("size")} />
@@ -267,7 +326,7 @@ export default function Editor() {
           onMenu={(x, y, i) => { setSel(i); setTab("slide"); setMenu({ x, y, i, target: null }); }}
           onUpload={() => addInput.current?.click()} />
         <Stage p={p} sel={idx} tab={tab} view={view} onFiles={addFiles}
-          welcome={welcome && fresh && allSample} onUpload={() => addInput.current?.click()} onSkipWelcome={() => setWelcome(false)}
+          welcome={welcome && fresh && allSample} onUpload={() => addInput.current?.click()} onSkipWelcome={() => setWelcome(false)} onOpenFile={() => openInput.current?.click()}
           onPick={(i) => { setSel(i); setTab("slide"); }}
           onNav={(d) => { setTab("slide"); setSel((idx + d + n) % n); }}
           edit={{ sel: pick, hover: hov, onSel: setPick, onPatch: patchCur, crop, onCrop: setCrop }}
@@ -287,6 +346,14 @@ export default function Editor() {
       {dialog === "keys" && <KeysDialog onClose={() => setDialog("")} />}
       {dialog === "tr" && <TranslateDialog p={p} update={update} onFlash={flash} onClose={() => setDialog("")} />}
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems(menu)} onClose={() => setMenu(null)} />}
+      {fileMenu && <ContextMenu x={fileMenu.x} y={fileMenu.y} minWidth={200} items={fileItems} onClose={() => setFileMenu(null)} />}
+      <input ref={openInput} type="file" accept={`${FILE_EXT},application/zip`} hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) askOpen(f); }} />
+      {confirm && <ReplaceDialog current={curName}
+        title={confirm.kind === "open" ? `Open ${confirm.file.name}?` : "Start a new project?"}
+        confirmLabel={confirm.kind === "open" ? "Open" : "Start new"}
+        onClose={() => setConfirm(null)}
+        onSaveFirst={async () => { const c = confirm; await saveFile(); if (c.kind === "open") doOpen(c.file); else doNew(); }}
+        onConfirm={() => (confirm.kind === "open" ? doOpen(confirm.file) : doNew())} />}
       {addMenu && <ContextMenu x={addMenu.x} y={addMenu.y} minWidth={168} items={addItems(addMenu.i)} onClose={() => setAddMenu(null)} />}
       {toast && (
         <div className="toast" role="status">

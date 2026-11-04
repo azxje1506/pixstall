@@ -32,6 +32,8 @@ function migrate(p: Project): Project {
     return x;
   }) };
 }
+// Chuẩn hoá dự án đọc từ nơi khác (IndexedDB, file .pixstall): bù trường thiếu bằng mẫu + DEFAULT_THEME, chuyển dữ liệu cũ
+export const normalizeProject = (got: Partial<Project>): Project => migrate({ ...sampleProject(), ...got, theme: { ...DEFAULT_THEME, ...got.theme } });
 export type SaveState = "loading" | "saved" | "saving" | "error";
 
 export function useProject() {
@@ -49,7 +51,7 @@ export function useProject() {
     loadProject().then(async (got) => {
       // Dự án cũ thiếu trường theme mới → bù bằng DEFAULT_THEME; ảnh dataURL → kho ảnh; nạp bộ đệm rồi mới vẽ
       if (got) {
-        const proj = await moveImages(migrate({ ...sampleProject(), ...got, theme: { ...DEFAULT_THEME, ...got.theme } }));
+        const proj = await moveImages(normalizeProject(got));
         await loadImages(refsOf(proj));
         gcImages(refsOf(proj));
         setP(proj);

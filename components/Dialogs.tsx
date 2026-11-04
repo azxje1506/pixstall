@@ -143,9 +143,29 @@ export function ExportDialog({ p, onClose, onDone }: { p: Project; onClose: () =
   );
 }
 
+// --- Xác nhận trước khi thay dự án hiện tại (mở file / tạo mới) ---
+export function ReplaceDialog({ title, current, onSaveFirst, onConfirm, onClose, confirmLabel }: {
+  title: string; current: string; confirmLabel: string; onSaveFirst: () => void; onConfirm: () => void; onClose: () => void;
+}) {
+  return (
+    <Modal title={title} icon={<FileArchive />} onClose={onClose} width={440}>
+      <div className="form">
+        <p className="cbody">
+          This replaces <b>{current}</b> in this browser. You can still press <kbd>Ctrl</kbd> <kbd>Z</kbd> right after, but saving a copy first is the safest way to keep it.
+        </p>
+        <div className="row g4" style={{ justifyContent: "flex-end" }}>
+          <button className="ghost sm" style={{ width: "auto" }} onClick={onClose}>Cancel</button>
+          <button className="ghost sm" style={{ width: "auto" }} onClick={onSaveFirst}><Download />Save current, then continue</button>
+          <button className="primary sm" onClick={onConfirm}>{confirmLabel}</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // --- Bảng phím tắt (mở bằng phím ? hoặc nút bàn phím trên thanh trên) ---
 const KEYS: [string, [string, string][]][] = [
-  ["General", [["Ctrl Z", "Undo"], ["Ctrl Shift Z", "Redo"], ["Ctrl D", "Duplicate slide"], ["← →", "Previous / next slide"], ["?", "Show shortcuts"]]],
+  ["General", [["Ctrl S", "Save project to file"], ["Ctrl O", "Open project file"], ["Ctrl Z", "Undo"], ["Ctrl Shift Z", "Redo"], ["Ctrl D", "Duplicate slide"], ["← →", "Previous / next slide"], ["?", "Show shortcuts"]]],
   ["Canvas", [["Click", "Select device or text"], ["Double‑click", "Edit text"], ["↑ ↓ ← →", "Nudge selection (Shift = ×4)"], ["Esc", "Deselect"], ["Right‑click", "More actions"]]],
   ["View", [["Ctrl +/−", "Zoom in / out"], ["Ctrl 0", "Zoom to fit"], ["Ctrl Scroll", "Zoom at cursor"], ["Space Drag", "Pan"]]],
   ["Inspector", [["Drag label", "Scrub the value"], ["Shift Alt", "Faster / finer scrub"], ["↑ ↓", "Step a number field (Shift ×10)"]]],

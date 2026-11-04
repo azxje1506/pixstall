@@ -563,3 +563,14 @@ body.dragging .ed-hit.cropping { cursor: grabbing; }
   .zval { min-width: 0; padding: 0 4px; }
 }
 .foot { min-width: 0; position: relative; z-index: 6; } /* không overflow:hidden — bảng kiểm tra luật store bật lên phía trên chân trang */
+
+/* --- v1.1: menu File + nút mở file ở màn chào mừng --- */
+.filebtn { width: auto; padding: 0 4px; gap: 2px; display: flex; }
+.app .filebtn .chev { width: 10px; height: 10px; }
+.linkbtn { font-size: 12px; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
+.linkbtn:hover { color: var(--accent); }
+/* Hộp xác nhận: đoạn chữ thường (không dùng .hint vì .form .hint là flex) */
+.cbody { margin: 0; font-size: 13px; line-height: 1.55; color: var(--muted); }
+.cbody b { color: var(--text); }
+/* Tên dự án: bề ngang theo chữ (ô nhập không tự chiếm ~170px) → nút File nằm sát tên */
+.pname input { width: 0; min-width: 100%; }

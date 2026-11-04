@@ -70,6 +70,13 @@ export async function putImage(src: Blob | string): Promise<string> {
   return "img:" + id;
 }
 
+// Lấy Blob gốc của ảnh (để đóng gói file dự án); không có thì null
+export async function getImageBlob(ref: string): Promise<Blob | null> {
+  if (!isRef(ref)) return null;
+  const r = await run<Rec | undefined>("readonly", (s) => s.get(ref.slice(4))).catch(() => undefined);
+  return r?.blob ?? null;
+}
+
 // Nạp các ảnh dự án đang dùng vào bộ đệm; ảnh mất (bị trình duyệt dọn) thì bỏ qua → vẽ rỗng
 export async function loadImages(refs: string[]) {
   await Promise.all(refs.filter(isRef).map(async (ref) => {

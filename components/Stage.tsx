@@ -23,6 +23,7 @@ interface Props {
   welcome: boolean; // lần đầu vào, dự án toàn màn mẫu → hiện thẻ chào mừng
   onUpload: () => void;
   onSkipWelcome: () => void;
+  onOpenFile: () => void; // mở file .pixstall
   onMenu: (x: number, y: number, index: number, target: CanvasPick) => void; // index -1 = feature graphic
 }
 
@@ -33,7 +34,7 @@ const isTyping = (t: EventTarget | null) => !!(t as HTMLElement)?.closest?.("inp
 // Gợi ý trong lớp phủ: dự án toàn màn mẫu thì ảnh sẽ thế vào các slide mẫu
 const allSampleHint = (p: Project) => (p.slides.every((s) => !s.img) ? "They'll replace the sample screens, in order" : "Each image becomes a new slide");
 
-export function Stage({ p, sel, tab, view, onPick, onNav, onFiles, edit, welcome, onUpload, onSkipWelcome, onMenu }: Props) {
+export function Stage({ p, sel, tab, view, onPick, onNav, onFiles, edit, welcome, onUpload, onSkipWelcome, onOpenFile, onMenu }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState({ w: 900, h: 600 });
   const [over, setOver] = useState(false);
@@ -190,6 +191,7 @@ export function Stage({ p, sel, tab, view, onPick, onNav, onFiles, edit, welcome
             <p>They go straight into this layout, with headlines, 3D devices and backgrounds ready to export for {p.store === "ios" ? "the App Store" : "Google Play"}.</p>
             <button className="primary" onClick={onUpload}><Upload />Upload screenshots</button>
             <button className="ghost" onClick={onSkipWelcome}><Sparkles />Explore the sample first</button>
+            <button className="linkbtn" onClick={onOpenFile}>or open a .pixstall project file</button>
             <span className="mono">PNG or JPG · {z.w}×{z.h} works best</span>
           </div>
         </div>

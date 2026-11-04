@@ -1,7 +1,7 @@
-// Thanh trên: logo · tên dự án (sửa tại chỗ) · trạng thái lưu · menu Target (store + cỡ máy gộp 1 nút) · ngôn ngữ · kiểu xem
+// Thanh trên: logo · tên dự án (sửa tại chỗ) · menu File (New / Open / Save to file — Editor vẽ menu) · trạng thái lưu · menu Target (store + cỡ máy gộp 1 nút) · ngôn ngữ · kiểu xem
 // · undo/redo · phím tắt · sáng/tối · Export
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, Keyboard, Ruler, Cloud, CloudAlert, LoaderCircle, Apple, Play, Smartphone, Tablet, Languages, GalleryHorizontal, Square, Undo2, Redo2, Sun, Moon, Download } from "lucide-react";
+import { FolderOpen, Check, ChevronDown, Keyboard, Ruler, Cloud, CloudAlert, LoaderCircle, Apple, Play, Smartphone, Tablet, Languages, GalleryHorizontal, Square, Undo2, Redo2, Sun, Moon, Download } from "lucide-react";
 import type { Project, Store } from "@/lib/types";
 import { LOCALES } from "@/lib/presets";
 import { currentSize, sizesOf } from "@/lib/rules";
@@ -28,6 +28,7 @@ interface Props {
   onName: (v: string) => void;
   onKeys: () => void; // mở bảng phím tắt
   onTranslate: () => void; // mở bảng dịch
+  onFileMenu: (x: number, y: number) => void; // mở menu File tại toạ độ (Editor vẽ)
 }
 
 // Popover Target: 2 cột App Store / Google Play, mỗi cột liệt kê cỡ preset + cỡ tự thêm; chọn 1 cỡ = đổi luôn store
@@ -85,8 +86,10 @@ export function TopBar(x: Props) {
       <div className="logo"><span className="mark" />Pixstall</div>
       <span className="slash">/</span>
       <ProjectName value={x.p.name || x.p.feature.name || "Untitled"} onChange={x.onName} />
+      <button className="ibtn filebtn" title="File — new, open, save to file" aria-label="File menu" aria-haspopup="menu"
+        onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); x.onFileMenu(r.left, r.bottom + 4); }}><FolderOpen /><ChevronDown className="chev" /></button>
       {/* Trạng thái tự lưu trên trình duyệt (IndexedDB) */}
-      <span className={`save ${x.save}`} title={x.save === "error" ? "Couldn't save: browser storage is full or blocked (private mode?). Export a ZIP to keep your work." : "Saved in this browser"}>
+      <span className={`save ${x.save}`} title={x.save === "error" ? "Couldn't save: browser storage is full or blocked (private mode?). Use File › Save to file to keep your work." : "Saved in this browser — use File › Save to file (Ctrl+S) to keep a copy or move to another device"}>
         {x.save === "error" ? <CloudAlert /> : x.save === "saved" ? <Cloud /> : <LoaderCircle className="spin" />}
         {x.save === "error" ? "Not saved" : x.save === "saved" ? "Saved" : "Saving…"}
       </span>
