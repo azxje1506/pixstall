@@ -4,12 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { useProject } from "@/lib/useProject";
 import type { SizePreset, Slide, Feature } from "@/lib/types";
 import { uid } from "@/lib/presets";
-import { sizesOf } from "@/lib/rules";
+import { sizesOf, allSizes } from "@/lib/rules";
 import { TopBar } from "./TopBar";
 import { SlideList } from "./SlideList";
 import { Stage } from "./Stage";
 import { Inspector } from "./Inspector";
-import { SizeDialog, ExportDialog } from "./Dialogs";
+import { SizeDialog, ExportDialog, KeysDialog } from "./Dialogs";
 import type { CanvasPick } from "./SlideCanvas";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { CopyPlus, Trash2, ImageUp, RotateCcw, BringToFront, SendToBack } from "lucide-react";
@@ -22,7 +22,7 @@ export default function Editor() {
   const [tab, setTab] = useState<"slide" | "feature">("slide");
   const [view, setView] = useState<"strip" | "single">("strip");
   const [dark, setDark] = useState(false);
-  const [dialog, setDialog] = useState<"" | "size" | "export">("");
+  const [dialog, setDialog] = useState<"" | "size" | "export" | "keys">("");
   const [toast, setToast] = useState<{ msg: string; undo?: boolean } | null>(null);
   const toastT = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [welcome, setWelcome] = useState(true); // tắt sau khi user upload hoặc chọn xem mẫu
@@ -49,6 +49,7 @@ export default function Editor() {
       const typing = t?.closest("input,textarea,select") || t?.isContentEditable;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") { if (typing) return; e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
       if (typing) return;
+      if (e.key === "?" && !dialog) { e.preventDefault(); setDialog("keys"); return; }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "d") { e.preventDefault(); if (tab === "slide") dupAt(idx); return; }
       if (e.key === "Escape") return setPick(null);
       const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
@@ -133,6 +134,8 @@ export default function Editor() {
     const img = await readImg(f);
     update((d) => ({ ...d, slides: d.slides.map((s, i) => (i === idx ? { ...s, img } : s)) }));
   };
+  // Đổi ảnh slide bất kỳ: chọn slide đó rồi mở hộp chọn file
+  const replaceAt = (i: number) => { setSel(i); setTab("slide"); replaceInput.current?.click(); };
 
   const addSize = (z: SizePreset) => {
     update((d) => ({ ...d, customSizes: [...d.customSizes, z], store: z.store, sizeId: z.id }));
@@ -144,7 +147,13 @@ export default function Editor() {
     <div className="app">
       <TopBar p={p} save={save} view={view} viewLocked={tab === "feature"} dark={dark} canUndo={canUndo} canRedo={canRedo}
         onStore={(store) => { update((d) => ({ ...d, store, sizeId: sizesOf(d, store)[0].id })); if (store === "ios") setTab("slide"); }}
-        onSize={(sizeId) => update((d) => ({ ...d, sizeId }))}
+        onSize={(sizeId) => {
+          // Chọn cỡ ở menu Target: đổi luôn store theo cỡ đó (1 bước undo); về App Store thì rời Feature graphic
+          const st = allSizes(p).find((z) => z.id === sizeId)?.store ?? p.store;
+          update((d) => ({ ...d, sizeId, store: st }));
+          if (st === "ios") setTab("slide");
+        }}
+        onName={(name) => update((d) => ({ ...d, name }))} onKeys={() => setDialog("keys")}
         onLoc={(loc) => update((d) => ({ ...d, loc }))}
         onView={setView} onUndo={undo} onRedo={redo} onDark={() => setDark(!dark)}
         onExport={() => setDialog("export")} onAddSize={() => setDialog("size")} />
@@ -153,7 +162,7 @@ export default function Editor() {
           onPick={(i) => { setSel(i); setTab("slide"); }}
           onFeature={() => setTab("feature")}
           onMove={(from, to) => { update((d) => { const s = [...d.slides]; const [m] = s.splice(from, 1); s.splice(to, 0, m); return { ...d, slides: s }; }); setSel(to); }}
-          onDelete={delAt} onDuplicate={dupAt}
+          onDelete={delAt} onDuplicate={dupAt} onReplace={replaceAt} onFiles={addFiles}
           onMenu={(x, y, i) => { setSel(i); setTab("slide"); setMenu({ x, y, i, target: null }); }}
           onUpload={() => addInput.current?.click()} />
         <Stage p={p} sel={idx} tab={tab} view={view} onFiles={addFiles}
@@ -170,7 +179,8 @@ export default function Editor() {
       <input ref={replaceInput} type="file" accept="image/*" hidden onChange={(e) => { replace(e.target.files?.[0]); e.target.value = ""; }} />
       {dialog === "size" && <SizeDialog p={p} onAdd={addSize} onClose={() => setDialog("")}
         onRemove={(id) => update((d) => { const customSizes = d.customSizes.filter((z) => z.id !== id); return { ...d, customSizes, sizeId: d.sizeId === id ? sizesOf({ ...d, customSizes }, d.store)[0].id : d.sizeId }; })} />}
-      {dialog === "export" && <ExportDialog p={p} onClose={() => setDialog("")} />}
+      {dialog === "export" && <ExportDialog p={p} onClose={() => setDialog("")} onDone={(k) => flash(`Exported ${k} files`)} />}
+      {dialog === "keys" && <KeysDialog onClose={() => setDialog("")} />}
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems(menu)} onClose={() => setMenu(null)} />}
       {toast && (
         <div className="toast" role="status">

@@ -2,8 +2,9 @@
 // Thả file ảnh vào để thêm slide. Slide đang chọn nhận `edit` → kéo máy/chữ ngay trên canvas; bấm nền để bỏ chọn
 // Zoom: "fit" (vừa khung) hoặc tỉ lệ theo pixel ảnh xuất (1 = 100%). Ctrl/⌘+cuộn (hoặc chụm trackpad) zoom quanh con trỏ,
 // Ctrl +/−/0 = to/nhỏ/vừa khung. Giữ Space (hoặc nút giữa chuột) rồi kéo để di chuyển màn. Chuột phải → onMenu
+// Chip kiểm tra luật store: bấm để mở danh sách, bấm lỗi có slide → nhảy tới slide đó. Nền canvas sáng/tối riêng (nhớ localStorage)
 import { useEffect, useRef, useState, type MouseEvent as RME } from "react";
-import { ShieldCheck, TriangleAlert, CircleCheck, ChevronLeft, ChevronRight, MousePointer2, Upload, Sparkles, Minus, Plus, Check } from "lucide-react";
+import { ShieldCheck, TriangleAlert, CircleCheck, ChevronLeft, ChevronRight, ChevronUp, MousePointer2, Upload, Sparkles, Minus, Plus, Check, SunMoon, ArrowRight } from "lucide-react";
 import type { Project } from "@/lib/types";
 import { LOCALES, FEATURE_SIZE } from "@/lib/presets";
 import { checkProject, currentSize } from "@/lib/rules";
@@ -41,6 +42,18 @@ export function Stage({ p, sel, tab, view, onPick, onNav, onFiles, edit, welcome
   const [space, setSpace] = useState(false);
   const [panning, setPanning] = useState(false);
   const [edges, setEdges] = useState({ l: false, r: false });
+  const [issuesOpen, setIssuesOpen] = useState(false);
+  const chk = useRef<HTMLDivElement>(null);
+  const [cvDark, setCvDark] = useState(() => localStorage.getItem("pixstall:canvas-dark") === "1");
+  useEffect(() => { localStorage.setItem("pixstall:canvas-dark", cvDark ? "1" : "0"); }, [cvDark]);
+  // Đóng danh sách lỗi khi bấm ra ngoài / Esc
+  useEffect(() => {
+    if (!issuesOpen) return;
+    const down = (e: PointerEvent) => { if (!chk.current?.contains(e.target as Node)) setIssuesOpen(false); };
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") setIssuesOpen(false); };
+    window.addEventListener("pointerdown", down, true); window.addEventListener("keydown", key);
+    return () => { window.removeEventListener("pointerdown", down, true); window.removeEventListener("keydown", key); };
+  }, [issuesOpen]);
   const panned = useRef(false);
   const z = currentSize(p);
 
@@ -152,7 +165,7 @@ export function Stage({ p, sel, tab, view, onPick, onNav, onFiles, edit, welcome
   ));
 
   return (
-    <main className={`main ${over ? "drop" : ""}`}
+    <main className={`main ${over ? "drop" : ""} ${cvDark ? "cv-dark" : ""}`}
       onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setOver(true); } }}
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setOver(false); }}
       onDrop={(e) => { if (e.dataTransfer.files.length) { e.preventDefault(); onFiles(e.dataTransfer.files); } setOver(false); }}>
@@ -181,14 +194,24 @@ export function Stage({ p, sel, tab, view, onPick, onNav, onFiles, edit, welcome
         </div>
       )}
       <div className="foot">
-        <div className={`check ${warns.length ? "warn" : "ok"}`} tabIndex={0}>
-          {warns.length ? <TriangleAlert /> : <ShieldCheck />}
-          {warns.length ? `${warns.length} issue${warns.length > 1 ? "s" : ""}` : `Ready for ${storeName}`}
-          <div className="issues">
-            {issues.map((x, i) => (
-              <div key={i}>{x.level === "ok" ? <CircleCheck className="c-ok" /> : <TriangleAlert className="c-warn" />}{x.msg}</div>
-            ))}
-          </div>
+        <div className="chkwrap" ref={chk}>
+          <button className={`check ${warns.length ? "warn" : "ok"}`} aria-expanded={issuesOpen} onClick={() => setIssuesOpen(!issuesOpen)}>
+            {warns.length ? <TriangleAlert /> : <ShieldCheck />}
+            {warns.length ? `${warns.length} issue${warns.length > 1 ? "s" : ""}` : `Ready for ${storeName}`}
+            <ChevronUp className={`chev ${issuesOpen ? "up" : ""}`} />
+          </button>
+          {issuesOpen && (
+            <div className="issues" role="dialog" aria-label="Store checks">
+              <div className="ihead"><span className="ttl">{storeName} checks</span><span className="mono">{warns.length ? `${warns.length} to fix` : "all good"}</span></div>
+              {issues.map((x, i) => x.slide !== undefined ? (
+                <button key={i} className="irow link" onClick={() => { onPick(x.slide!); setIssuesOpen(false); }}>
+                  <TriangleAlert className="c-warn" /><span>{x.msg}</span><ArrowRight className="go" />
+                </button>
+              ) : (
+                <div key={i} className="irow">{x.level === "ok" ? <CircleCheck className="c-ok" /> : <TriangleAlert className="c-warn" />}<span>{x.msg}</span></div>
+              ))}
+            </div>
+          )}
         </div>
         <span className="tip"><MousePointer2 />{edit.sel ? "Drag to move · corners resize · ◯ rotates · Esc deselect" : "Click to edit · right-click for more · Space+drag to pan"}</span>
         <div className="nav">
@@ -197,6 +220,7 @@ export function Stage({ p, sel, tab, view, onPick, onNav, onFiles, edit, welcome
           <button className="ibtn" title="Next" aria-label="Next slide" onClick={() => onNav(1)}><ChevronRight /></button>
         </div>
         <div className="zoom">
+          <button className={`ibtn ${cvDark ? "on" : ""}`} title="Canvas background: light / dark" aria-label="Toggle canvas background" onClick={() => setCvDark(!cvDark)}><SunMoon /></button>
           <button className="ibtn" title="Zoom out (Ctrl −)" aria-label="Zoom out" onClick={() => stepZoom(-1)}><Minus /></button>
           <button className="zval" title="Zoom level" aria-label={`Zoom ${pct}%`} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setZmenu({ x: r.left, y: r.top - 4 }); }}>
             {zoom === "fit" ? <>Fit<span className="muted"> {pct}%</span></> : `${pct}%`}

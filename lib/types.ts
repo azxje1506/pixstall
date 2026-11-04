@@ -70,6 +70,7 @@ export interface Feature extends Tilt3D {
 }
 
 export interface Project {
+  name?: string; // tên dự án (thanh trên + tên file ZIP); thiếu thì dùng tên app ở feature
   store: Store;
   sizeId: string;
   loc: string;

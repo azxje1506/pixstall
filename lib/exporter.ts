@@ -30,7 +30,8 @@ export function planFiles(p: Project, o: ExportOptions): string[] {
   return files;
 }
 
-export async function exportZip(p: Project, o: ExportOptions, onProgress: (done: number, total: number) => void): Promise<Blob> {
+// signal: bấm Huỷ → ném lỗi "Cancelled" ở ảnh kế tiếp, dọn vùng ẩn trong finally
+export async function exportZip(p: Project, o: ExportOptions, onProgress: (done: number, total: number) => void, signal?: AbortSignal): Promise<Blob> {
   const [{ toCanvas }, { default: JSZip }, { encode }] = await Promise.all([import("html-to-image"), import("jszip"), import("fast-png")]);
   const zip = new JSZip();
   const files = planFiles(p, o);
@@ -61,12 +62,14 @@ export async function exportZip(p: Project, o: ExportOptions, onProgress: (done:
       const max = Math.min(p.slides.length, LIMIT[z.store][1]);
       const proj = { ...p, store: z.store };
       for (const l of o.locales) for (let i = 0; i < max; i++) {
+        if (signal?.aborted) throw new Error("Cancelled");
         flushSync(() => root.render(createElement(SlideCanvas, { p: proj, index: i, width: z.w, size: z, loc: l })));
         zip.file(files[k], await snap(z.w, z.h));
         onProgress(++k, files.length);
       }
     }
     if (o.feature) {
+      if (signal?.aborted) throw new Error("Cancelled");
       flushSync(() => root.render(createElement(FeatureCanvas, { p, width: FEATURE_SIZE.w })));
       zip.file(files[k], await snap(FEATURE_SIZE.w, FEATURE_SIZE.h));
       onProgress(++k, files.length);

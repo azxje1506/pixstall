@@ -27,7 +27,7 @@ export function sizeWarnings(z: SizePreset): string[] {
   return out;
 }
 
-export type Issue = { level: "ok" | "warn"; msg: string };
+export type Issue = { level: "ok" | "warn"; msg: string; slide?: number }; // slide = index để bấm nhảy tới
 
 export function checkProject(p: Project): Issue[] {
   const out: Issue[] = [];
@@ -37,12 +37,13 @@ export function checkProject(p: Project): Issue[] {
   if (n > mx) out.push({ level: "warn", msg: `${storeName} allows max ${mx} — ${n - mx} will be skipped` });
   p.slides.forEach((s, i) => {
     const [title] = textOf(s, p.loc);
-    if (title.length > 34) out.push({ level: "warn", msg: `Slide ${i + 1}: headline is long, may wrap to 3+ lines` });
-    if (!title.trim()) out.push({ level: "warn", msg: `Slide ${i + 1}: headline is empty` });
+    if (title.length > 34) out.push({ level: "warn", msg: `Slide ${i + 1}: headline is long, may wrap to 3+ lines`, slide: i });
+    if (!title.trim()) out.push({ level: "warn", msg: `Slide ${i + 1}: headline is empty`, slide: i });
   });
   if (p.loc !== "en") {
     const miss = p.slides.filter((s) => !s.t[p.loc]).length;
-    if (miss) out.push({ level: "warn", msg: `${miss} slide(s) not translated to ${LOCALES[p.loc]}` });
+    const first = p.slides.findIndex((s) => !s.t[p.loc]);
+    if (miss) out.push({ level: "warn", msg: `${miss} slide(s) not translated to ${LOCALES[p.loc]}`, slide: first });
   }
   if (z.custom) sizeWarnings(z).forEach((m) => out.push({ level: "warn", msg: m }));
   if (!out.length) out.push({ level: "ok", msg: `${Math.min(n, mx)} screenshots · ${z.w}×${z.h}` });
