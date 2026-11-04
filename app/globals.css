@@ -539,3 +539,23 @@ body.dragging .ed-hit.cropping { cursor: grabbing; }
 .trempty { display: flex; gap: 8px; align-items: center; justify-content: center; color: var(--muted); margin: 0; }
 /* Feature graphic: khối chữ không bắt chuột (chỉ icon/tên/tagline bắt) */
 .ed-hit.text[data-pick="icon"] { border-radius: 2.6em; }
+
+/* --- Review v1.0: cột lưới được phép co nhỏ hơn nội dung (tránh tràn ngang ở 900–1200px) --- */
+.list, .lgroup, .lchildren, .group, .llist { grid-template-columns: minmax(0, 1fr); }
+.lmain, .lrow, .ghead, .hlrow { min-width: 0; }
+.ghead .gbtn { flex: none; }
+/* Cây Layers: nút mắt/xoá chỉ chiếm chỗ khi rê chuột (hoặc layer đang ẩn) → phần mô tả hiện được nhiều chữ hơn */
+.litem .eye { display: none; }
+.litem:hover .eye, .litem.off .eye:not(.danger) { display: grid; }
+/* Nút trong ô chọn (Seg) co lại được, chữ dài thì cắt "…" thay vì tràn khỏi panel */
+.seg, .seg.full, .pctl .seg { min-width: 0; }
+.seg button { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.pctl .seg button { padding: 0 6px; }
+/* Chân trang màn 900–1199px: bỏ chữ "slide 1 / 6" (chỉ giữ mũi tên), thu khoảng cách → thanh zoom không lọt ra ngoài */
+@media (max-width: 1199px) {
+  .foot { padding: 0 8px; gap: 8px; }
+  .foot .nav .mono { display: none; }
+  .foot .nav { gap: 0; }
+  .zval { min-width: 0; padding: 0 4px; }
+}
+.foot { min-width: 0; overflow: hidden; }
