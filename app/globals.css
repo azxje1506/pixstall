@@ -558,4 +558,4 @@ body.dragging .ed-hit.cropping { cursor: grabbing; }
   .foot .nav { gap: 0; }
   .zval { min-width: 0; padding: 0 4px; }
 }
-.foot { min-width: 0; overflow: hidden; }
+.foot { min-width: 0; position: relative; z-index: 6; } /* không overflow:hidden — bảng kiểm tra luật store bật lên phía trên chân trang */
