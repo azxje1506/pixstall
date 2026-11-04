@@ -9,7 +9,7 @@ import type { Project } from "@/lib/types";
 import { LOCALES, FEATURE_SIZE } from "@/lib/presets";
 import { checkProject, currentSize } from "@/lib/rules";
 import { SlideCanvas, FeatureCanvas, type CanvasEdit, type CanvasPick } from "./SlideCanvas";
-import { ContextMenu } from "./ContextMenu";
+import { MenuButton, PopoverButton } from "./Popover";
 
 interface Props {
   p: Project;
@@ -39,22 +39,11 @@ export function Stage({ p, sel, tab, view, onPick, onNav, onFiles, edit, welcome
   const [box, setBox] = useState({ w: 900, h: 600 });
   const [over, setOver] = useState(false);
   const [zoom, setZoom] = useState<number | "fit">("fit");
-  const [zmenu, setZmenu] = useState<{ x: number; y: number } | null>(null);
   const [space, setSpace] = useState(false);
   const [panning, setPanning] = useState(false);
   const [edges, setEdges] = useState({ l: false, r: false });
-  const [issuesOpen, setIssuesOpen] = useState(false);
-  const chk = useRef<HTMLDivElement>(null);
   const [cvDark, setCvDark] = useState(() => localStorage.getItem("pixstall:canvas-dark") === "1");
   useEffect(() => { localStorage.setItem("pixstall:canvas-dark", cvDark ? "1" : "0"); }, [cvDark]);
-  // Đóng danh sách lỗi khi bấm ra ngoài / Esc
-  useEffect(() => {
-    if (!issuesOpen) return;
-    const down = (e: PointerEvent) => { if (!chk.current?.contains(e.target as Node)) setIssuesOpen(false); };
-    const key = (e: KeyboardEvent) => { if (e.key === "Escape") setIssuesOpen(false); };
-    window.addEventListener("pointerdown", down, true); window.addEventListener("keydown", key);
-    return () => { window.removeEventListener("pointerdown", down, true); window.removeEventListener("keydown", key); };
-  }, [issuesOpen]);
   const panned = useRef(false);
   const z = currentSize(p);
 
@@ -197,25 +186,22 @@ export function Stage({ p, sel, tab, view, onPick, onNav, onFiles, edit, welcome
         </div>
       )}
       <div className="foot">
-        <div className="chkwrap" ref={chk}>
-          <button className={`check ${warns.length ? "warn" : "ok"}`} aria-expanded={issuesOpen} onClick={() => setIssuesOpen(!issuesOpen)}>
-            {warns.length ? <TriangleAlert /> : <ShieldCheck />}
-            {warns.length ? `${warns.length} issue${warns.length > 1 ? "s" : ""}` : `Ready for ${storeName}`}
-            <ChevronUp className={`chev ${issuesOpen ? "up" : ""}`} />
-          </button>
-          {issuesOpen && (
-            <div className="issues" role="dialog" aria-label="Store checks">
-              <div className="ihead"><span className="ttl">{storeName} checks</span><span className="mono">{warns.length ? `${warns.length} to fix` : "all good"}</span></div>
-              {issues.map((x, i) => x.slide !== undefined ? (
-                <button key={i} className="irow link" onClick={() => { onPick(x.slide!); setIssuesOpen(false); }}>
-                  <TriangleAlert className="c-warn" /><span>{x.msg}</span><ArrowRight className="go" />
-                </button>
-              ) : (
-                <div key={i} className="irow">{x.level === "ok" ? <CircleCheck className="c-ok" /> : <TriangleAlert className="c-warn" />}<span>{x.msg}</span></div>
-              ))}
-            </div>
-          )}
-        </div>
+        {/* Kiểm tra luật store: bảng nổi phía trên chân trang; bấm lỗi có slide → nhảy tới slide đó */}
+        <PopoverButton className={`check ${warns.length ? "warn" : "ok"}`} placement="top-start" offset={8} popClass="issues" popLabel="Store checks"
+          content={(close) => <>
+            <div className="ihead"><span className="ttl">{storeName} checks</span><span className="mono">{warns.length ? `${warns.length} to fix` : "all good"}</span></div>
+            {issues.map((x, i) => x.slide !== undefined ? (
+              <button key={i} className="irow link" onClick={() => { onPick(x.slide!); close(); }}>
+                <TriangleAlert className="c-warn" /><span>{x.msg}</span><ArrowRight className="go" />
+              </button>
+            ) : (
+              <div key={i} className="irow">{x.level === "ok" ? <CircleCheck className="c-ok" /> : <TriangleAlert className="c-warn" />}<span>{x.msg}</span></div>
+            ))}
+          </>}>
+          {warns.length ? <TriangleAlert /> : <ShieldCheck />}
+          {warns.length ? `${warns.length} issue${warns.length > 1 ? "s" : ""}` : `Ready for ${storeName}`}
+          <ChevronUp className="chev" />
+        </PopoverButton>
         <span className="tip"><MousePointer2 />{edit.crop ? "Adjusting image: drag inside the screen · Esc to finish" : edit.sel && edit.sel !== "slide" ? "Drag to move · corners resize · ◯ rotates · double-click device to adjust image" : "Click to edit · right-click for more · Space+drag to pan"}</span>
         <div className="nav">
           <button className="ibtn" title="Previous" aria-label="Previous slide" onClick={() => onNav(-1)}><ChevronLeft /></button>
@@ -225,23 +211,20 @@ export function Stage({ p, sel, tab, view, onPick, onNav, onFiles, edit, welcome
         <div className="zoom">
           <button className={`ibtn ${cvDark ? "on" : ""}`} title="Canvas background: light / dark" aria-label="Toggle canvas background" onClick={() => setCvDark(!cvDark)}><SunMoon /></button>
           <button className="ibtn" title="Zoom out (Ctrl −)" aria-label="Zoom out" onClick={() => stepZoom(-1)}><Minus /></button>
-          <button className="zval" title="Zoom level" aria-label={`Zoom ${pct}%`} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setZmenu({ x: r.left, y: r.top - 4 }); }}>
+          <MenuButton className="zval" title="Zoom level" aria-label={`Zoom ${pct}%`} placement="top-end" offset={8} menuWidth={168} items={() => [
+            { label: "Zoom to fit", kbd: "Ctrl 0", on: zoom === "fit", icon: zoom === "fit" ? <Check /> : null, onClick: () => setZoom("fit") },
+            "sep",
+            ...[0.25, 0.5, 0.75, 1, 2].map((v) => ({ label: `${v * 100}%`, on: zoom === v, icon: zoom === v ? <Check /> : null, onClick: () => setZoom(v) })),
+            "sep",
+            { label: "Zoom in", kbd: "Ctrl +", icon: <Plus />, onClick: () => stepZoom(1) },
+            { label: "Zoom out", kbd: "Ctrl −", icon: <Minus />, onClick: () => stepZoom(-1) },
+          ]}>
             {zoom === "fit" ? <>Fit<span className="muted"> {pct}%</span></> : `${pct}%`}
-          </button>
+          </MenuButton>
           <button className="ibtn" title="Zoom in (Ctrl +)" aria-label="Zoom in" onClick={() => stepZoom(1)}><Plus /></button>
           <span className="mono dims">{feature ? `${FEATURE_SIZE.w}×${FEATURE_SIZE.h}` : `${z.w}×${z.h}`} · {LOCALES[p.loc]}</span>
         </div>
       </div>
-      {zmenu && (
-        <ContextMenu x={zmenu.x} y={zmenu.y} minWidth={168} onClose={() => setZmenu(null)} items={[
-          { label: "Zoom to fit", kbd: "Ctrl 0", on: zoom === "fit", icon: zoom === "fit" ? <Check /> : null, onClick: () => setZoom("fit") },
-          "sep",
-          ...[0.25, 0.5, 0.75, 1, 2].map((v) => ({ label: `${v * 100}%`, on: zoom === v, icon: zoom === v ? <Check /> : null, onClick: () => setZoom(v) })),
-          "sep",
-          { label: "Zoom in", kbd: "Ctrl +", icon: <Plus />, onClick: () => stepZoom(1) },
-          { label: "Zoom out", kbd: "Ctrl −", icon: <Minus />, onClick: () => stepZoom(-1) },
-        ]} />
-      )}
     </main>
   );
 }

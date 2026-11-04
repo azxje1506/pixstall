@@ -16,7 +16,7 @@ import { normalizeProject } from "@/lib/useProject";
 import { sampleProject } from "@/lib/presets";
 import { TranslateDialog } from "./TranslateDialog";
 import type { CanvasPick, LayerPick } from "./SlideCanvas";
-import { ContextMenu, type MenuItem } from "./ContextMenu";
+import { ContextMenu, type MenuItem } from "./Popover";
 import { putImage } from "@/lib/images";
 import { FilePlus2, FolderOpen, Save, Crop, CopyPlus, Trash2, ImageUp, RotateCcw, BringToFront, SendToBack, Heading, Type, Pilcrow, Tag } from "lucide-react";
 import { isFeat, fToggleHidden, fRemoveLayer, fLayerName, fCanAdd, setFeatText, phoneIdx, phoneOf, nameOfLayer, isLayer, isText, isDevice, posOf, withPos, toggleHidden as toggleH, removeLayer, layerName, canAdd, type LayerId } from "@/lib/layers";
@@ -123,11 +123,9 @@ export default function Editor() {
       { label: "Badge", icon: <Tag />, onClick: () => addText(i, "badge") },
     ];
   };
-  const [addMenu, setAddMenu] = useState<{ x: number; y: number; i: number } | null>(null);
 
   // --- File dự án .pixstall: lưu / mở / tạo mới ---
   const openInput = useRef<HTMLInputElement>(null);
-  const [fileMenu, setFileMenu] = useState<{ x: number; y: number } | null>(null);
   const [confirm, setConfirm] = useState<{ kind: "open"; file: File } | { kind: "new" } | null>(null);
   const [busy, setBusy] = useState(false);
   const savedRef = useRef<Project | null>(null); // dự án lúc lưu file gần nhất (để biết đã có thay đổi chưa)
@@ -311,7 +309,7 @@ export default function Editor() {
           update((d) => ({ ...d, sizeId, store: st }));
           if (st === "ios") setTab("slide");
         }}
-        onName={(name) => update((d) => ({ ...d, name }))} onKeys={() => setDialog("keys")} onTranslate={() => setDialog("tr")} onFileMenu={(x, y) => setFileMenu({ x, y })}
+        onName={(name) => update((d) => ({ ...d, name }))} onKeys={() => setDialog("keys")} onTranslate={() => setDialog("tr")} fileItems={fileItems}
         onLoc={(loc) => update((d) => ({ ...d, loc }))}
         onView={setView} onUndo={undo} onRedo={redo} onDark={() => setDark(!dark)}
         onExport={() => setDialog("export")} onAddSize={() => setDialog("size")} />
@@ -322,7 +320,7 @@ export default function Editor() {
           onMove={(from, to) => { update((d) => { const s = [...d.slides]; const [m] = s.splice(from, 1); s.splice(to, 0, m); return { ...d, slides: s }; }); setSel(to); }}
           onDelete={delAt} onDuplicate={dupAt} onReplace={replaceAt} onFiles={addFiles}
           pick={pick} onLayer={pickLayer} onToggleHidden={toggleHidden} onHover={setHov}
-          onRemoveLayer={(i, l) => removeAt(i, l)} onAddMenu={(x, y, i) => setAddMenu({ x, y, i })}
+          onRemoveLayer={(i, l) => removeAt(i, l)} addItems={addItems}
           onMenu={(x, y, i) => { setSel(i); setTab("slide"); setMenu({ x, y, i, target: null }); }}
           onUpload={() => addInput.current?.click()} />
         <Stage p={p} sel={idx} tab={tab} view={view} onFiles={addFiles}
@@ -333,7 +331,7 @@ export default function Editor() {
           onMenu={(x, y, i, target) => setMenu({ x, y, i, target })} />
         <Inspector p={p} sel={idx} tab={tab} update={update} pick={pick}
           onPickLayer={setPick} onToggleHidden={(l) => toggleHidden(tab === "feature" ? -1 : idx, l)}
-          onRemoveLayer={(l) => removeAt(tab === "feature" ? -1 : idx, l)} onAddMenu={(x, y) => setAddMenu({ x, y, i: tab === "feature" ? -1 : idx })}
+          onRemoveLayer={(l) => removeAt(tab === "feature" ? -1 : idx, l)} addItems={() => addItems(tab === "feature" ? -1 : idx)}
           crop={crop} onCrop={(l) => { if (l) setPick(l); setCrop(l); }}
           onReplace={pickFile} onReplaceFile={(f, k) => replace(f, k)} onFlash={flash}
           onDuplicate={() => dupAt(idx)} />
@@ -346,7 +344,6 @@ export default function Editor() {
       {dialog === "keys" && <KeysDialog onClose={() => setDialog("")} />}
       {dialog === "tr" && <TranslateDialog p={p} update={update} onFlash={flash} onClose={() => setDialog("")} />}
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems(menu)} onClose={() => setMenu(null)} />}
-      {fileMenu && <ContextMenu x={fileMenu.x} y={fileMenu.y} minWidth={200} items={fileItems} onClose={() => setFileMenu(null)} />}
       <input ref={openInput} type="file" accept={`${FILE_EXT},application/zip`} hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) askOpen(f); }} />
       {confirm && <ReplaceDialog current={curName}
         title={confirm.kind === "open" ? `Open ${confirm.file.name}?` : "Start a new project?"}
@@ -354,7 +351,6 @@ export default function Editor() {
         onClose={() => setConfirm(null)}
         onSaveFirst={async () => { const c = confirm; await saveFile(); if (c.kind === "open") doOpen(c.file); else doNew(); }}
         onConfirm={() => (confirm.kind === "open" ? doOpen(confirm.file) : doNew())} />}
-      {addMenu && <ContextMenu x={addMenu.x} y={addMenu.y} minWidth={168} items={addItems(addMenu.i)} onClose={() => setAddMenu(null)} />}
       {toast && (
         <div className="toast" role="status">
           {toast.msg}

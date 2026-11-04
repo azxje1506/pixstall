@@ -75,7 +75,7 @@ input, select, textarea { font: inherit; color: var(--text); }
 .check.ok { background: #DCFCE7; color: #166534; } .check.warn { background: #FEF3C7; color: #92400E; }
 .dark .check.ok { background: #052e16; color: #86efac; } .dark .check.warn { background: #3a2a05; color: #fcd34d; }
 .chkwrap { position: relative; flex: none; }
-.issues { position: absolute; bottom: 40px; left: 0; width: 360px; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 12px; padding: 4px; box-shadow: 0 12px 32px rgba(0,0,0,.16); font-weight: 400; z-index: 30; display: grid; animation: tin2 .15s ease-out; }
+.issues { width: 360px; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 12px; padding: 4px; box-shadow: 0 12px 32px rgba(0,0,0,.16); font-weight: 400; z-index: 30; display: grid; animation: tin2 .15s ease-out; }
 .ihead { display: flex; justify-content: space-between; align-items: center; padding: 8px 8px 4px; }
 .irow { display: flex; gap: 8px; padding: 6px 8px; align-items: flex-start; border-radius: 8px; text-align: left; line-height: 1.4; }
 .irow span { flex: 1; }
@@ -83,7 +83,7 @@ input, select, textarea { font: inherit; color: var(--text); }
 .irow .go { opacity: 0; color: var(--accent); }
 .irow.link:hover .go { opacity: 1; }
 .check .chev { transition: transform .15s; opacity: .7; }
-.check .chev.up { transform: rotate(180deg); }
+.check.open .chev { transform: rotate(180deg); }
 .check:hover { filter: brightness(.97); }
 .c-ok { color: var(--ok); } .c-warn { color: var(--warn); }
 .nav { display: flex; align-items: center; gap: 6px; }
@@ -296,7 +296,7 @@ body.scrubbing, body.scrubbing * { cursor: ew-resize !important; user-select: no
 .cf-btn:hover { border-color: var(--line); }
 .cf-btn .mono { color: var(--text); }
 .cf-sw { width: 20px; height: 20px; border-radius: 4px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); flex: none; }
-.cf-pop { position: absolute; right: 0; top: 32px; z-index: 40; width: 232px; padding: 12px; display: grid; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 16px 40px rgba(0,0,0,.18); animation: tin2 .15s ease-out; }
+.cf-pop { width: 232px; padding: 12px; display: grid; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 16px 40px rgba(0,0,0,.18); animation: tin2 .15s ease-out; }
 .cf-sv { position: relative; height: 144px; border-radius: 8px; cursor: crosshair; touch-action: none;
   background-image: linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, transparent) !important; background-blend-mode: normal; }
 .cf-sv { box-shadow: inset 0 0 0 1px rgba(0,0,0,.08); }
@@ -319,7 +319,7 @@ body.scrubbing, body.scrubbing * { cursor: ew-resize !important; user-select: no
 .zval:hover { background: var(--soft); }
 .zoom .dims { margin-left: 8px; }
 .locked { opacity: .4; pointer-events: none; }
-.cmenu { position: fixed; z-index: 80; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,.18); display: grid; animation: tin2 .12s ease-out; }
+.cmenu { padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,.18); display: grid; animation: tin2 .12s ease-out; }
 .cmenu button { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px; border-radius: 6px; text-align: left; white-space: nowrap; }
 .cmenu button:hover:not(:disabled) { background: var(--accent); color: #fff; }
 .cmenu button:hover:not(:disabled) kbd, .cmenu button:hover:not(:disabled) .cico { color: #fff; }
@@ -366,7 +366,7 @@ body.scrubbing, body.scrubbing * { cursor: ew-resize !important; user-select: no
 .tlabel { font-weight: 500; white-space: nowrap; }
 .app .chip .chev { width: 12px; height: 12px; color: var(--muted); transition: transform .15s; }
 .chip.target.open .chev { transform: rotate(180deg); }
-.tmenu { position: absolute; top: 36px; left: 50%; transform: translateX(-50%); z-index: 60; width: 560px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 16px 40px rgba(0,0,0,.16); padding: 8px; animation: tin3 .15s ease-out; }
+.tmenu { width: 560px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 16px 40px rgba(0,0,0,.16); padding: 8px; animation: tin3 .15s ease-out; }
 @keyframes tin3 { from { opacity: 0; transform: translate(-50%, -4px); } }
 .tcols { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .tcol { display: grid; gap: 2px; align-content: start; }
@@ -574,3 +574,15 @@ body.dragging .ed-hit.cropping { cursor: grabbing; }
 .cbody b { color: var(--text); }
 /* Tên dự án: bề ngang theo chữ (ô nhập không tự chiếm ~170px) → nút File nằm sát tên */
 .pname input { width: 0; min-width: 100%; }
+
+/* --- Popover dùng chung (components/Popover.tsx): mọi khung nổi = .pop + class riêng (cmenu, tmenu, issues, cf-pop) --- */
+.pop { position: fixed; z-index: 120; animation: popin .14s ease-out; }
+.pop[data-side="top"] { animation-name: popin-up; }
+@keyframes popin { from { opacity: 0; transform: translateY(-4px) scale(.98); } }
+@keyframes popin-up { from { opacity: 0; transform: translateY(4px) scale(.98); } }
+.mlist { display: grid; }
+.mlist button:focus-visible { outline: 0; background: var(--accent); color: #fff; }
+.mlist button:focus-visible kbd, .mlist button:focus-visible .cico { color: #fff; }
+.chip.target.open, .filebtn.open, .gbtn.open, .zval.open { background: var(--soft); color: var(--text); }
+.ladd.open { color: var(--accent); }
+.mlist:focus { outline: 0; }

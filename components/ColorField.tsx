@@ -1,7 +1,9 @@
 // Ô chọn màu tự làm (thay input[type=color] mặc định): bấm ô màu → popover gồm
-// vùng Saturation/Value + thanh Hue + ô HEX + màu vừa dùng (nhớ 8 màu, localStorage) + màu gợi ý. Click ra ngoài / Esc để đóng.
+// vùng Saturation/Value + thanh Hue + ô HEX + màu vừa dùng (nhớ 8 màu, localStorage) + màu gợi ý.
+// Khung nổi dùng PopoverButton (components/Popover.tsx): tự đặt chỗ, bấm ngoài / Esc để đóng → đóng thì ghi màu vào "vừa dùng"
 // onChange gọi liên tục khi kéo — truyền tag ở chỗ gọi để gộp undo
 import { useEffect, useRef, useState, type PointerEvent as RPE } from "react";
+import { PopoverButton } from "./Popover";
 
 // --- Đổi màu HEX ⇄ HSV (h 0..360, s/v 0..1) ---
 function hexToHsv(hex: string): [number, number, number] {
@@ -34,10 +36,9 @@ function track(e: RPE<HTMLDivElement>, fn: (x: number, y: number) => void) {
 }
 
 export function ColorField({ value, onChange, label }: { value: string; onChange: (hex: string) => void; label: string }) {
-  const [open, setOpen] = useState(false);
   const [hsv, setHsv] = useState(() => hexToHsv(value));
   const [txt, setTxt] = useState(value.toUpperCase());
-  const box = useRef<HTMLDivElement>(null);
+  const val = useRef(value); val.current = value;
 
   // Đồng bộ khi màu đổi từ ngoài (preset, undo) — giữ hue cũ nếu màu xám
   useEffect(() => {
@@ -45,28 +46,15 @@ export function ColorField({ value, onChange, label }: { value: string; onChange
     if (hsvToHex(...hsv) !== value.toUpperCase()) { const n = hexToHsv(value); setHsv(n[1] ? n : [hsv[0], n[1], n[2]]); }
   }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Click ra ngoài / Esc → đóng và ghi vào "vừa dùng"
-  useEffect(() => {
-    if (!open) return;
-    const close = () => { setOpen(false); pushRecent(value); };
-    const down = (e: PointerEvent) => { if (!box.current?.contains(e.target as Node)) close(); };
-    const key = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); close(); } };
-    window.addEventListener("pointerdown", down);
-    window.addEventListener("keydown", key, true);
-    return () => { window.removeEventListener("pointerdown", down); window.removeEventListener("keydown", key, true); };
-  }, [open, value]);
 
   const set = (n: [number, number, number]) => { setHsv(n); onChange(hsvToHex(...n)); };
-  const recent = open ? readRecent() : [];
+  const recent = readRecent();
 
   return (
-    <div className="cf" ref={box}>
-      <button className="cf-btn" aria-label={`${label}: ${value}`} title={label} onClick={() => setOpen(!open)}>
-        <span className="cf-sw" style={{ background: value }} />
-        <span className="mono">{value.toUpperCase().slice(1)}</span>
-      </button>
-      {open && (
-        <div className="cf-pop" role="dialog" aria-label={label}>
+    <div className="cf">
+      <PopoverButton className="cf-btn" aria-label={`${label}: ${value}`} title={label} placement="bottom-end" popClass="cf-pop" popLabel={label}
+        onOpenChange={(o) => { if (!o) pushRecent(val.current); }}
+        content={() => <>
           <div className="cf-sv" style={{ background: `hsl(${hsv[0]} 100% 50%)` }} onPointerDown={(e) => track(e, (x, y) => set([hsv[0], x, 1 - y]))}>
             <span style={{ left: `${hsv[1] * 100}%`, top: `${(1 - hsv[2]) * 100}%`, background: value }} />
           </div>
@@ -81,8 +69,10 @@ export function ColorField({ value, onChange, label }: { value: string; onChange
           {recent.length > 0 && <><span className="plab">Recent</span><div className="cf-row">{recent.map((c) => <button key={c} aria-label={c} title={c} style={{ background: c }} onClick={() => onChange(c)} />)}</div></>}
           <span className="plab">Presets</span>
           <div className="cf-row">{PRESET.map((c) => <button key={c} aria-label={c} title={c} style={{ background: c }} onClick={() => onChange(c)} />)}</div>
-        </div>
-      )}
+        </>}>
+        <span className="cf-sw" style={{ background: value }} />
+        <span className="mono">{value.toUpperCase().slice(1)}</span>
+      </PopoverButton>
     </div>
   );
 }

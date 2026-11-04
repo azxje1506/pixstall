@@ -17,6 +17,7 @@ import { mockScreen } from "@/lib/mocks";
 import { FEATURE_ICONS } from "./icons";
 import { Seg, Slider, Group, Num, Prop, Tabs } from "./ui";
 import { ColorField } from "./ColorField";
+import { MenuButton, type MenuItem } from "./Popover";
 import type { CanvasPick, LayerPick } from "./SlideCanvas";
 import { isLayer, isHidden, layersOf, layerName as nameOf, extraOf, extraText, patchExtra, posOf, withPos, featText, setFeatText, fLayersOf, fIsHidden, fRemovable, fLayerName, phoneIdx, phoneOf, setPhone, phoneCount as phoneCountOf, type LayerId } from "@/lib/layers";
 import { imgSrc, imgMeta, putImage } from "@/lib/images";
@@ -201,9 +202,10 @@ function DeviceControls({ v, scaleRange, onChange, tag, right, label = "Device",
 }
 
 // --- Danh sách layer con trong panel cấp Slide: bấm để chọn, mắt để ẩn/hiện ---
-function LayerList({ rows, onPick, onToggle, onAdd }: { rows: { id: LayerId; name: string; sub: string; hidden?: boolean }[]; onPick: (l: LayerId) => void; onToggle?: (l: LayerId) => void; onAdd?: (x: number, y: number) => void }) {
+function LayerList({ rows, onPick, onToggle, addItems }: { rows: { id: LayerId; name: string; sub: string; hidden?: boolean }[]; onPick: (l: LayerId) => void; onToggle?: (l: LayerId) => void; addItems?: () => MenuItem[] }) {
   return (
-    <Group title="Layers" right={onAdd && <button className="gbtn" title="Add a text layer" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); onAdd(r.left, r.bottom + 4); }}><Plus />Add text</button>}>
+    // Nút "Add text" sát mép phải panel → menu căn mép phải với nút (bottom-end), không đè lên danh sách
+    <Group title="Layers" right={addItems && <MenuButton className="gbtn" title="Add a text layer" placement="bottom-end" menuWidth={168} items={addItems}><Plus />Add text</MenuButton>}>
       <div className="llist">
         {rows.map((r) => (
           <div key={r.id} className={`lrow ${r.hidden ? "off" : ""}`}>
@@ -243,10 +245,10 @@ function StyleTab({ sc, owned, onClearAll }: { sc: Scope; owned: number; onClear
 }
 
 type ImgKey = "img" | "img2";
-export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidden, onRemoveLayer, onAddMenu, onReplace, onReplaceFile, onDuplicate, onFlash, crop, onCrop }: {
+export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidden, onRemoveLayer, addItems, onReplace, onReplaceFile, onDuplicate, onFlash, crop, onCrop }: {
   p: Project; sel: number; tab: "slide" | "feature"; update: Update; pick: CanvasPick;
   onPickLayer: (l: CanvasPick) => void; onToggleHidden: (l: LayerPick) => void;
-  onRemoveLayer: (l: LayerId) => void; onAddMenu: (x: number, y: number) => void;
+  onRemoveLayer: (l: LayerId) => void; addItems: () => MenuItem[];
   onReplace: (k?: ImgKey) => void; onReplaceFile: (f: File | undefined, k?: ImgKey) => void; onDuplicate: () => void; onFlash: (m: string, undo?: boolean) => void;
   crop: LayerId | null; onCrop: (l: LayerId | null) => void;
 }) {
@@ -507,7 +509,7 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
         <FrameGroup sc={project} />
       </>;
     } else body = <>
-      <LayerList onPick={onPickLayer} onToggle={onToggleHidden} onAdd={onAddMenu}
+      <LayerList onPick={onPickLayer} onToggle={onToggleHidden} addItems={addItems}
         rows={fLayersOf(f, p.loc, (j) => featureShot(p, j) + 1).map((l) => ({ ...l, hidden: fIsHidden(f, l.id) }))} />
       <Group id="f-layout" title="Layout" right={<span className="mono">1024×500</span>}>
         <div className="layouts three">
@@ -646,7 +648,7 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
     </Group>
   </>;
   else body = <>
-    <LayerList onPick={onPickLayer} onToggle={onToggleHidden} onAdd={onAddMenu}
+    <LayerList onPick={onPickLayer} onToggle={onToggleHidden} addItems={addItems}
       rows={layersOf(s, p.loc, nextNo).map((l) => ({ ...l, hidden: isHidden(s, l.id) }))} />
     <Group id="s-layout" title="Layout" right={<ApplyAll onClick={() => applyAll({ layout: s.layout }, "Layout")} />}>
       <div className="layouts">

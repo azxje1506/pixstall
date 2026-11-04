@@ -9,6 +9,7 @@ import { useState, type ReactNode } from "react";
 import { GripVertical, Trash2, Plus, CopyPlus, ImageUp, Upload, Image as ImageIcon, ChevronRight, Type, Smartphone, Eye, EyeOff, Heading, Pilcrow, Tag } from "lucide-react";
 import { layersOf, isHidden, fLayersOf, fIsHidden, fRemovable, type LayerId } from "@/lib/layers";
 import { featureShot } from "./SlideCanvas";
+import { MenuButton, type MenuItem } from "./Popover";
 import type { CanvasPick, LayerPick } from "./SlideCanvas";
 import type { Project } from "@/lib/types";
 import { LIMIT } from "@/lib/presets";
@@ -35,7 +36,7 @@ interface Props {
   onToggleHidden: (i: number, l: LayerPick) => void;
   onHover: (l: LayerPick | null) => void;
   onRemoveLayer: (i: number, l: LayerId) => void;
-  onAddMenu: (x: number, y: number, i: number) => void;
+  addItems: (i: number) => MenuItem[]; // menu "Add text" của slide i (-1 = feature graphic)
 }
 
 // Icon theo loại layer
@@ -55,7 +56,7 @@ function LayerRow({ icon, name, sub, on, hidden, onClick, onToggle, onHover, onR
   );
 }
 
-export function SlideList({ p, sel, tab, onPick, onFeature, onMove, onDelete, onDuplicate, onUpload, onMenu, onReplace, onFiles, pick, onLayer, onToggleHidden, onHover, onRemoveLayer, onAddMenu }: Props) {
+export function SlideList({ p, sel, tab, onPick, onFeature, onMove, onDelete, onDuplicate, onUpload, onMenu, onReplace, onFiles, pick, onLayer, onToggleHidden, onHover, onRemoveLayer, addItems }: Props) {
   const z = currentSize(p);
   const [drag, setDrag] = useState<number | null>(null);
   const [mark, setMark] = useState<{ i: number; after: boolean } | null>(null); // vạch chỗ thả khi kéo hàng
@@ -127,9 +128,9 @@ export function SlideList({ p, sel, tab, onPick, onFeature, onMove, onDelete, on
                   onClick={() => onLayer(i, l.id)} onToggle={() => onToggleHidden(i, l.id)} onHover={(v) => onHover(v ? l.id : null)}
                   onRemove={l.id === "device" || l.id === "device2" ? undefined : () => onRemoveLayer(i, l.id)} />
               ))}
-              <button className="litem ladd" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); onAddMenu(r.left, r.bottom + 4, i); }}>
+              <MenuButton className="litem ladd" placement="bottom-start" menuWidth={168} items={() => addItems(i)}>
                 <span className="lico"><Plus /></span><span className="lname">Add text</span>
-              </button>
+              </MenuButton>
             </div>
           )}
           </div>
@@ -149,9 +150,9 @@ export function SlideList({ p, sel, tab, onPick, onFeature, onMove, onDelete, on
                     onClick={() => onLayer(-1, l.id)} onToggle={() => onToggleHidden(-1, l.id)} onHover={(v) => onHover(v ? l.id : null)}
                     onRemove={fRemovable(l.id) ? () => onRemoveLayer(-1, l.id) : undefined} />
                 ))}
-                <button className="litem ladd" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); onAddMenu(r.left, r.bottom + 4, -1); }}>
+                <MenuButton className="litem ladd" placement="bottom-start" menuWidth={168} items={() => addItems(-1)}>
                   <span className="lico"><Plus /></span><span className="lname">Add text</span>
-                </button>
+                </MenuButton>
               </div>
             )}
           </>

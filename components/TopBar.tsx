@@ -1,11 +1,12 @@
-// Thanh trên: logo · tên dự án (sửa tại chỗ) · menu File (New / Open / Save to file — Editor vẽ menu) · trạng thái lưu · menu Target (store + cỡ máy gộp 1 nút) · ngôn ngữ · kiểu xem
+// Thanh trên: logo · tên dự án (sửa tại chỗ) · menu File (New / Open / Save to file — items do Editor đưa vào) · trạng thái lưu · menu Target (store + cỡ máy gộp 1 nút) · ngôn ngữ · kiểu xem
 // · undo/redo · phím tắt · sáng/tối · Export
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { FolderOpen, Check, ChevronDown, Keyboard, Ruler, Cloud, CloudAlert, LoaderCircle, Apple, Play, Smartphone, Tablet, Languages, GalleryHorizontal, Square, Undo2, Redo2, Sun, Moon, Download } from "lucide-react";
 import type { Project, Store } from "@/lib/types";
 import { LOCALES } from "@/lib/presets";
 import { currentSize, sizesOf } from "@/lib/rules";
 import { Seg } from "./ui";
+import { MenuButton, PopoverButton, type MenuItem } from "./Popover";
 import type { SaveState } from "@/lib/useProject";
 
 interface Props {
@@ -28,18 +29,12 @@ interface Props {
   onName: (v: string) => void;
   onKeys: () => void; // mở bảng phím tắt
   onTranslate: () => void; // mở bảng dịch
-  onFileMenu: (x: number, y: number) => void; // mở menu File tại toạ độ (Editor vẽ)
+  fileItems: MenuItem[]; // các lệnh của menu File
 }
 
-// Popover Target: 2 cột App Store / Google Play, mỗi cột liệt kê cỡ preset + cỡ tự thêm; chọn 1 cỡ = đổi luôn store
+// Nội dung popover Target: 2 cột App Store / Google Play, mỗi cột liệt kê cỡ preset + cỡ tự thêm; chọn 1 cỡ = đổi luôn store
+// (khung nổi, vị trí, đóng khi bấm ngoài/Esc do PopoverButton lo)
 function TargetMenu({ p, onPick, onAddSize, onClose }: { p: Project; onPick: (store: Store, id: string) => void; onAddSize: () => void; onClose: () => void }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const down = (e: PointerEvent) => { if (!ref.current?.parentElement?.contains(e.target as Node)) onClose(); };
-    const key = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("pointerdown", down, true); window.addEventListener("keydown", key);
-    return () => { window.removeEventListener("pointerdown", down, true); window.removeEventListener("keydown", key); };
-  }, [onClose]);
   const col = (st: Store) => (
     <div className="tcol">
       <span className="tcol-h">{st === "ios" ? <Apple /> : <Play />}{st === "ios" ? "App Store" : "Google Play"}</span>
@@ -57,10 +52,10 @@ function TargetMenu({ p, onPick, onAddSize, onClose }: { p: Project; onPick: (st
     </div>
   );
   return (
-    <div className="tmenu" ref={ref} role="dialog" aria-label="Target store and size">
+    <>
       <div className="tcols">{col("ios")}{col("play")}</div>
       <button className="tadd" onClick={() => { onAddSize(); onClose(); }}><Ruler />Add custom size…</button>
-    </div>
+    </>
   );
 }
 
@@ -80,30 +75,27 @@ function ProjectName({ value, onChange }: { value: string; onChange: (v: string)
 
 export function TopBar(x: Props) {
   const z = currentSize(x.p);
-  const [tm, setTm] = useState(false);
   return (
     <header className="top">
       <div className="logo"><span className="mark" />Pixstall</div>
       <span className="slash">/</span>
       <ProjectName value={x.p.name || x.p.feature.name || "Untitled"} onChange={x.onName} />
-      <button className="ibtn filebtn" title="File — new, open, save to file" aria-label="File menu" aria-haspopup="menu"
-        onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); x.onFileMenu(r.left, r.bottom + 4); }}><FolderOpen /><ChevronDown className="chev" /></button>
+      <MenuButton className="ibtn filebtn" title="File — new, open, save to file" aria-label="File menu" placement="bottom-start" menuWidth={200} items={x.fileItems}>
+        <FolderOpen /><ChevronDown className="chev" />
+      </MenuButton>
       {/* Trạng thái tự lưu trên trình duyệt (IndexedDB) */}
       <span className={`save ${x.save}`} title={x.save === "error" ? "Couldn't save: browser storage is full or blocked (private mode?). Use File › Save to file to keep your work." : "Saved in this browser — use File › Save to file (Ctrl+S) to keep a copy or move to another device"}>
         {x.save === "error" ? <CloudAlert /> : x.save === "saved" ? <Cloud /> : <LoaderCircle className="spin" />}
         {x.save === "error" ? "Not saved" : x.save === "saved" ? "Saved" : "Saving…"}
       </span>
       <div className="center">
-        <div className="twrap">
-          <button className={`chip target ${tm ? "open" : ""}`} aria-haspopup="dialog" aria-expanded={tm} title="Store & device size" onClick={() => setTm(!tm)}>
-            {x.p.store === "ios" ? <Apple /> : <Play />}
-            <span className="tlabel">{z.name}</span>
-            <span className="mono">{z.w}×{z.h}</span>
-            <ChevronDown className="chev" />
-          </button>
-          {tm && <TargetMenu p={x.p} onClose={() => setTm(false)} onAddSize={x.onAddSize}
-            onPick={(_, id) => x.onSize(id)} />}
-        </div>
+        <PopoverButton className="chip target" title="Store & device size" placement="bottom-center" popClass="tmenu" popLabel="Target store and size"
+          content={(close) => <TargetMenu p={x.p} onClose={close} onAddSize={x.onAddSize} onPick={(_, id) => x.onSize(id)} />}>
+          {x.p.store === "ios" ? <Apple /> : <Play />}
+          <span className="tlabel">{z.name}</span>
+          <span className="mono">{z.w}×{z.h}</span>
+          <ChevronDown className="chev" />
+        </PopoverButton>
         <label className="chip">
           <Languages />
           <select value={x.p.loc} aria-label="Language" onChange={(e) => (e.target.value === "__tr" ? x.onTranslate() : x.onLoc(e.target.value))}>
