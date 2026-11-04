@@ -34,6 +34,8 @@ export interface Slide extends Tilt3D {
   tx?: number; ty?: number; // khối chữ
   front?: "text" | "device"; // phần nào nằm trên (mặc định chữ trên máy)
   hidden?: { text?: boolean; device?: boolean }; // ẩn layer (cả lúc xuất ảnh)
+  override?: Partial<Theme>; // style riêng của slide này, đè lên Project style
+  tw?: number; // bề ngang khối chữ (% slide); thiếu = theo layout
 }
 
 export type FrameStyle = "auto" | "iphone" | "pixel" | "none";
@@ -57,7 +59,14 @@ export interface Theme {
   tsize: number; // cỡ tiêu đề, % bề ngang slide
   align: "left" | "center";
   ink: "light" | "dark";
+  tweight: number; // độ đậm tiêu đề (400..900)
+  tlh: number; // giãn dòng tiêu đề (0.9..1.5)
+  tcolor: string; // màu chữ tự chọn; "" = theo ink (trắng/đen)
+  hl: string; // màu tô cho từ nằm trong *dấu sao*
 }
+
+// Các khoá theme được phép đè riêng từng slide (khung máy, nền, chữ)
+export type ThemeKey = keyof Theme;
 
 export interface Feature extends Tilt3D {
   name: string;

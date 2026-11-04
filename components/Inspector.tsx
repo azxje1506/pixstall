@@ -5,12 +5,12 @@
 //   tab "Project style": mọi thiết lập dùng chung, gom một chỗ để xem tổng
 // Nhóm gắn nhãn "All slides" = thiết lập dùng chung toàn dự án (U2 sẽ cho đè riêng từng slide)
 // Mọi thay đổi đi qua update(fn, tag) — tag gộp các lần kéo slider thành 1 bước undo
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ImageUp, CopyPlus, ImageOff, RotateCcw, Smartphone, EyeOff, Eye, TextAlignStart, TextAlignCenter, Sun, Moon, Type,
-  PanelBottom, ArrowDownToLine, Copy, MoveRight, CopyCheck, ChevronRight, Frame, Image as ImageIcon } from "lucide-react";
-import type { Project, Slide, Theme, Feature, Layout, Tilt3D, FrameStyle, FrameColor, Bg } from "@/lib/types";
+  PanelBottom, ArrowDownToLine, Copy, MoveRight, CopyCheck, ChevronRight, Frame, Highlighter, Image as ImageIcon } from "lucide-react";
+import type { Project, Slide, Theme, ThemeKey, Feature, Layout, Tilt3D, FrameStyle, FrameColor, Bg } from "@/lib/types";
 import { FONTS, FRAME_COLORS, GRADIENTS, TILT_PRESETS, DEFAULT_THEME, LOCALES } from "@/lib/presets";
-import { textOf } from "@/lib/rules";
+import { textOf, themeOf, plain } from "@/lib/rules";
 import { mockScreen } from "@/lib/mocks";
 import { FEATURE_ICONS } from "./icons";
 import { Seg, Slider, Group, Num, Prop, Tabs } from "./ui";
@@ -38,21 +38,54 @@ const BG_HINT: Record<Bg, string> = {
 
 const LAYER_ICON: Record<LayerPick, ReactNode> = { text: <Type />, device: <Smartphone /> };
 
-// Nhãn nhỏ trên tiêu đề nhóm dùng chung
-const AllSlides = () => <span className="allbadge" title="Shared by every slide — change it once, applies everywhere">All slides</span>;
+// --- Phạm vi sửa style: "project" (Project style, áp mọi slide) hoặc "slide" (đè riêng slide đang chọn) ---
+// Nhóm ở phạm vi slide: thuộc tính đang đè có chấm xanh (bấm để bỏ đè); tiêu đề có "This slide" + Reset + Apply to all
+export interface Scope {
+  kind: "project" | "slide";
+  t: Theme; // style thực tế đang thấy
+  set: SetTheme; // ghi vào project theme hoặc override của slide
+  ov?: Partial<Theme>; // phần slide đang đè
+  reset?: (keys: ThemeKey[]) => void; // bỏ đè các khoá
+  push?: (keys: ThemeKey[]) => void; // đẩy giá trị của slide này lên Project style cho mọi slide
+}
+const FRAME_KEYS: ThemeKey[] = ["frame", "frameColor", "bezel", "radius", "depth", "shadow"];
+const BG_KEYS: ThemeKey[] = ["bg", "c1", "c2", "solid", "blur", "overlay"];
+const TYPE_KEYS: ThemeKey[] = ["font", "tsize", "tweight", "tlh", "align", "ink", "tcolor", "hl"];
+
+// Chấm đè cho 1 khoá (chỉ ở phạm vi slide)
+const mk = (sc: Scope, ...keys: ThemeKey[]) => sc.kind === "slide" && sc.ov && keys.some((k) => k in sc.ov!)
+  ? { mark: true, onReset: () => sc.reset?.(keys) } : {};
+
+// Phần phải của tiêu đề nhóm style
+function ScopeBadge({ sc, keys }: { sc: Scope; keys: ThemeKey[] }) {
+  if (sc.kind === "project") return <span className="allbadge" title="Shared by every slide">All slides</span>;
+  const n = keys.filter((k) => sc.ov && k in sc.ov).length;
+  if (!n) return <span className="allbadge muted" title="Uses the project style — any change here applies to this slide only">Project style</span>;
+  return (
+    <span className="row g4">
+      <span className="allbadge own" title={`${n} setting${n > 1 ? "s" : ""} differ from the project style`}>This slide</span>
+      <button className="ibtn sm" title="Reset this group to the project style" aria-label="Reset group to project style" onClick={() => sc.reset?.(keys)}><RotateCcw /></button>
+      <button className="ibtn sm" title="Use these settings on every slide" aria-label="Apply group to all slides" onClick={() => sc.push?.(keys)}><CopyCheck /></button>
+    </span>
+  );
+}
+
 // Nút chép thiết lập slide này sang mọi slide
 const ApplyAll = ({ onClick }: { onClick: () => void }) => (
   <button className="gbtn" title="Copy this setting to every slide" onClick={onClick}><CopyCheck />Apply to all</button>
 );
 
-// --- Nhóm dùng chung (dùng cả trong panel layer lẫn tab Project style) ---
-function FrameGroup({ t, set }: { t: Theme; set: SetTheme }) {
+// --- Nhóm style (dùng ở panel layer với phạm vi slide, và ở tab Project style) ---
+function FrameGroup({ sc }: { sc: Scope }) {
+  const { t, set } = sc;
   return (
-    <Group id="st-frame" title="Device frame" right={<AllSlides />}>
-      <Seg full value={t.frame} onChange={(frame: FrameStyle) => set({ frame })} options={[
-        { v: "auto", label: "Auto" }, { v: "iphone", label: "iPhone" }, { v: "pixel", label: "Pixel" }, { v: "none", label: "None" },
-      ]} />
-      <Prop label="Color">
+    <Group id="st-frame" title="Device frame" right={<ScopeBadge sc={sc} keys={FRAME_KEYS} />}>
+      <Prop label="Style" {...mk(sc, "frame")}>
+        <Seg full value={t.frame} onChange={(frame: FrameStyle) => set({ frame })} options={[
+          { v: "auto", label: "Auto" }, { v: "iphone", label: "iPhone" }, { v: "pixel", label: "Pixel" }, { v: "none", label: "None" },
+        ]} />
+      </Prop>
+      <Prop label="Color" {...mk(sc, "frameColor")}>
         <div className="swatches">
           {(Object.keys(FRAME_COLORS) as FrameColor[]).map((c) => (
             <button key={c} title={FRAME_COLORS[c].label} aria-label={`Frame ${FRAME_COLORS[c].label}`} className={t.frameColor === c ? "on" : ""} style={{ background: FRAME_COLORS[c].body }} onClick={() => set({ frameColor: c })} />
@@ -60,27 +93,30 @@ function FrameGroup({ t, set }: { t: Theme; set: SetTheme }) {
           <span className="mono">{FRAME_COLORS[t.frameColor].label}</span>
         </div>
       </Prop>
-      <Slider label="Bezel" value={t.bezel} min={0} max={6} step={0.2} unit="%" onChange={(bezel) => set({ bezel }, "bezel")} />
-      <Slider label="Radius" value={t.radius} min={0} max={20} step={0.5} unit="%" onChange={(radius) => set({ radius }, "radius")} />
-      <Slider label="Depth" value={t.depth} min={0} max={8} step={0.5} unit="%" onChange={(depth) => set({ depth }, "depth")} />
-      <Slider label="Shadow" value={t.shadow} min={0} max={60} onChange={(shadow) => set({ shadow }, "shadow")} />
+      <Slider label="Bezel" value={t.bezel} min={0} max={6} step={0.2} unit="%" onChange={(bezel) => set({ bezel }, "bezel")} {...mk(sc, "bezel")} />
+      <Slider label="Radius" value={t.radius} min={0} max={20} step={0.5} unit="%" onChange={(radius) => set({ radius }, "radius")} {...mk(sc, "radius")} />
+      <Slider label="Depth" value={t.depth} min={0} max={8} step={0.5} unit="%" onChange={(depth) => set({ depth }, "depth")} {...mk(sc, "depth")} />
+      <Slider label="Shadow" value={t.shadow} min={0} max={60} onChange={(shadow) => set({ shadow }, "shadow")} {...mk(sc, "shadow")} />
     </Group>
   );
 }
 
-function BgGroup({ t, set }: { t: Theme; set: SetTheme }) {
+function BgGroup({ sc }: { sc: Scope }) {
+  const { t, set } = sc;
   const gOn = (a: string, b: string) => t.bg !== "color" && t.c1.toUpperCase() === a.toUpperCase() && t.c2.toUpperCase() === b.toUpperCase();
   return (
-    <Group id="st-bg" title="Background" right={<AllSlides />}>
-      <Seg full value={t.bg} onChange={(bg: Bg) => set({ bg })} options={[
-        { v: "color", label: "Color" }, { v: "gradient", label: "Gradient" }, { v: "panorama", label: "Panorama" }, { v: "blur", label: "Blur" },
-      ]} />
+    <Group id="st-bg" title="Background" right={<ScopeBadge sc={sc} keys={BG_KEYS} />}>
+      <Prop label="Type" {...mk(sc, "bg")}>
+        <Seg full value={t.bg} onChange={(bg: Bg) => set({ bg })} options={[
+          { v: "color", label: "Color" }, { v: "gradient", label: "Gradient" }, { v: "panorama", label: "Pano" }, { v: "blur", label: "Blur" },
+        ]} />
+      </Prop>
       <p className="hint">{BG_HINT[t.bg]}</p>
       {t.bg === "color"
-        ? <Prop label="Fill"><ColorField label="Background color" value={t.solid} onChange={(solid) => set({ solid }, "solid")} /></Prop>
+        ? <Prop label="Fill" {...mk(sc, "solid")}><ColorField label="Background color" value={t.solid} onChange={(solid) => set({ solid }, "solid")} /></Prop>
         : <>
-            <Prop label="From"><ColorField label="Gradient start" value={t.c1} onChange={(c1) => set({ c1 }, "c1")} /></Prop>
-            <Prop label="To"><ColorField label="Gradient end" value={t.c2} onChange={(c2) => set({ c2 }, "c2")} /></Prop>
+            <Prop label="From" {...mk(sc, "c1")}><ColorField label="Gradient start" value={t.c1} onChange={(c1) => set({ c1 }, "c1")} /></Prop>
+            <Prop label="To" {...mk(sc, "c2")}><ColorField label="Gradient end" value={t.c2} onChange={(c2) => set({ c2 }, "c2")} /></Prop>
           </>}
       <Prop label="Presets">
         <div className="swatches">
@@ -90,34 +126,40 @@ function BgGroup({ t, set }: { t: Theme; set: SetTheme }) {
         </div>
       </Prop>
       {t.bg === "blur" && <>
-        <Slider label="Blur" value={t.blur} min={0} max={30} onChange={(blur) => set({ blur }, "blur")} />
-        <Slider label="Overlay" value={t.overlay} min={0} max={80} unit="%" onChange={(overlay) => set({ overlay }, "overlay")} />
+        <Slider label="Blur" value={t.blur} min={0} max={30} onChange={(blur) => set({ blur }, "blur")} {...mk(sc, "blur")} />
+        <Slider label="Overlay" value={t.overlay} min={0} max={80} unit="%" onChange={(overlay) => set({ overlay }, "overlay")} {...mk(sc, "overlay")} />
       </>}
     </Group>
   );
 }
 
-function TypeGroup({ t, set }: { t: Theme; set: SetTheme }) {
+function TypeGroup({ sc }: { sc: Scope }) {
+  const { t, set } = sc;
+  const inkHex = t.ink === "light" ? "#FFFFFF" : "#15151A";
   return (
-    <Group id="st-type" title="Typography" right={<AllSlides />}>
-      <Prop label="Font">
+    <Group id="st-type" title="Typography" right={<ScopeBadge sc={sc} keys={TYPE_KEYS} />}>
+      <Prop label="Font" {...mk(sc, "font")}>
         <label className="chip"><Type />
           <select value={t.font} aria-label="Font" onChange={(e) => set({ font: e.target.value })}>
             {Object.keys(FONTS).map((f) => <option key={f}>{f}</option>)}
           </select>
         </label>
       </Prop>
-      <Slider label="Size" value={t.tsize} min={5} max={12} step={0.5} onChange={(tsize) => set({ tsize }, "tsize")} />
-      <Prop label="Align">
+      <Slider label="Size" value={t.tsize} min={5} max={12} step={0.5} onChange={(tsize) => set({ tsize }, "tsize")} {...mk(sc, "tsize")} />
+      <Slider label="Weight" value={t.tweight} min={400} max={900} step={100} onChange={(tweight) => set({ tweight }, "tweight")} {...mk(sc, "tweight")} />
+      <Slider label="Line ht." value={t.tlh} min={0.9} max={1.5} step={0.02} onChange={(tlh) => set({ tlh: +tlh.toFixed(2) }, "tlh")} {...mk(sc, "tlh")} />
+      <Prop label="Align" {...mk(sc, "align")}>
         <Seg full value={t.align} onChange={(align: Theme["align"]) => set({ align })} options={[
           { v: "left", icon: <TextAlignStart />, title: "Left" }, { v: "center", icon: <TextAlignCenter />, title: "Center" },
         ]} />
       </Prop>
-      <Prop label="Ink">
-        <Seg full value={t.ink} onChange={(ink: Theme["ink"]) => set({ ink })} options={[
-          { v: "light", label: "Light", icon: <Sun /> }, { v: "dark", label: "Dark", icon: <Moon /> },
+      <Prop label="Color" {...mk(sc, "ink", "tcolor")}>
+        <Seg full value={t.tcolor ? "custom" : t.ink} onChange={(v: string) => (v === "custom" ? set({ tcolor: inkHex === "#FFFFFF" ? "#FFF7E6" : "#1E1B4B" }) : set({ ink: v as Theme["ink"], tcolor: "" }))} options={[
+          { v: "light", icon: <Sun />, title: "White" }, { v: "dark", icon: <Moon />, title: "Black" }, { v: "custom", label: "Custom" },
         ]} />
       </Prop>
+      {t.tcolor && <Prop label="Custom"><ColorField label="Text color" value={t.tcolor} onChange={(tcolor) => set({ tcolor }, "tcolor")} /></Prop>}
+      <Prop label="Highlight" {...mk(sc, "hl")}><ColorField label="Highlight color for *words*" value={t.hl} onChange={(hl) => set({ hl }, "hl")} /></Prop>
     </Group>
   );
 }
@@ -172,16 +214,22 @@ function LayerList({ rows, onPick, onToggle }: { rows: { id: LayerPick; name: st
   );
 }
 
-// --- Tab Project style: gom mọi thiết lập dùng chung ---
-function StyleTab({ t, set }: { t: Theme; set: SetTheme }) {
+// --- Tab Project style: mọi thiết lập dùng chung + số slide đang có style riêng ---
+function StyleTab({ sc, owned, onClearAll }: { sc: Scope; owned: number; onClearAll: () => void }) {
   return (
     <>
-      <p className="tabnote">Defaults shared by every slide{t.bg === "panorama" ? " and the feature graphic" : ""}. Select a layer on the canvas to edit just that layer.</p>
-      <FrameGroup t={t} set={set} />
-      <BgGroup t={t} set={set} />
-      <TypeGroup t={t} set={set} />
+      <p className="tabnote">Defaults for every slide{sc.t.bg === "panorama" ? " and the feature graphic" : ""}. Select a slide or layer to give just that one its own look.</p>
+      {owned > 0 && (
+        <div className="ownnote">
+          <span><b>{owned} slide{owned > 1 ? "s" : ""}</b> use{owned > 1 ? "" : "s"} their own style and won't follow some changes here.</span>
+          <button className="gbtn" onClick={onClearAll}><RotateCcw />Reset all</button>
+        </div>
+      )}
+      <FrameGroup sc={sc} />
+      <BgGroup sc={sc} />
+      <TypeGroup sc={sc} />
       <div className="group">
-        <button className="ghost" onClick={() => set({ ...DEFAULT_THEME })}><RotateCcw />Reset project style</button>
+        <button className="ghost" onClick={() => sc.set({ ...DEFAULT_THEME })}><RotateCcw />Reset project style</button>
       </div>
     </>
   );
@@ -194,9 +242,38 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
 }) {
   const [ptab, setPtab] = useState<PTab>("item");
   const [hot, setHot] = useState(false); // kéo file ngang thẻ Screenshot
+  const ta = useRef<HTMLTextAreaElement>(null); // ô tiêu đề (để tô màu phần bôi đen)
   useEffect(() => { if (pick) setPtab("item"); }, [pick]); // chọn gì trên canvas → về tab thuộc tính
 
   const setTheme: SetTheme = (patch, tag) => update((d) => ({ ...d, theme: { ...d.theme, ...patch } }), tag);
+  const project: Scope = { kind: "project", t: p.theme, set: setTheme };
+  // Phạm vi slide đang chọn: ghi vào override; giá trị trùng Project style thì tự bỏ đè cho gọn
+  const cur = p.slides[sel];
+  const slideScope: Scope = {
+    kind: "slide", t: themeOf(p, cur), ov: cur?.override,
+    set: (patch, tag) => update((d) => ({ ...d, slides: d.slides.map((x, i) => {
+      if (i !== sel) return x;
+      const o: Partial<Theme> = { ...x.override, ...patch };
+      for (const k of Object.keys(o) as ThemeKey[]) if (o[k] === d.theme[k]) delete o[k];
+      return { ...x, override: Object.keys(o).length ? o : undefined };
+    }) }), tag),
+    reset: (keys) => update((d) => ({ ...d, slides: d.slides.map((x, i) => {
+      if (i !== sel || !x.override) return x;
+      const o = { ...x.override }; keys.forEach((k) => delete o[k]);
+      return { ...x, override: Object.keys(o).length ? o : undefined };
+    }) })),
+    push: (keys) => {
+      const eff = themeOf(p, cur), patch: Partial<Theme> = {};
+      keys.forEach((k) => { (patch as Record<string, unknown>)[k] = eff[k]; });
+      update((d) => ({ ...d, theme: { ...d.theme, ...patch }, slides: d.slides.map((x) => {
+        if (!x.override) return x;
+        const o = { ...x.override }; keys.forEach((k) => delete o[k]);
+        return { ...x, override: Object.keys(o).length ? o : undefined };
+      }) }));
+      onFlash(`Applied to all ${p.slides.length} slides`, true);
+    },
+  };
+  const owned = p.slides.filter((x) => x.override && Object.keys(x.override).length).length;
   const setSlide = (patch: Partial<Slide>, tag?: string) =>
     update((d) => ({ ...d, slides: d.slides.map((s, i) => (i === sel ? { ...s, ...patch } : s)) }), tag);
   const setFeature = (patch: Partial<Feature>, tag?: string) => update((d) => ({ ...d, feature: { ...d.feature, ...patch } }), tag);
@@ -212,7 +289,8 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
       <Tabs value={ptab} onChange={setPtab} options={[{ v: "item", label: isFeature ? "Feature" : "Slide" }, { v: "style", label: "Project style" }]} />
     </div>
   );
-  if (ptab === "style") return <aside className="right">{head}<StyleTab t={p.theme} set={setTheme} /></aside>;
+  if (ptab === "style") return <aside className="right">{head}<StyleTab sc={project} owned={owned}
+    onClearAll={() => { update((d) => ({ ...d, slides: d.slides.map((x) => ({ ...x, override: undefined })) })); onFlash("Every slide follows the project style again", true); }} /></aside>;
 
   // Breadcrumb: "Slide 03 › Device"; bấm phần đầu để lùi về cấp slide
   const rootName = isFeature ? "Feature graphic" : `Slide ${String(sel + 1).padStart(2, "0")}`;
@@ -248,11 +326,11 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
           ))}
         </div>
       </Group>
-      <TypeGroup t={p.theme} set={setTheme} />
+      <TypeGroup sc={project} />
     </>;
     else if (layer === "device") body = <>
       <DeviceControls label="Devices" v={f} scaleRange={[12, 30]} tag="f" onChange={(patch, tg) => setFeature(patch, tg)} />
-      <FrameGroup t={p.theme} set={setTheme} />
+      <FrameGroup sc={project} />
     </>;
     else body = <>
       <LayerList onPick={onPickLayer} rows={[
@@ -262,7 +340,7 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
       <Group title="Feature graphic" right={<span className="mono">1024×500</span>}>
         <p className="hint">The banner on top of your Google Play listing. Click the text or the phones on the canvas to edit them.</p>
       </Group>
-      <BgGroup t={p.theme} set={setTheme} />
+      <BgGroup sc={project} />
     </>;
     return <aside className="right">{head}{crumb(reset)}{body}</aside>;
   }
@@ -277,6 +355,16 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
     setSlide({ t: { ...s.t, [p.loc]: cur } }, `text${k}`);
   };
   const hiddenNow = layer ? !!s.hidden?.[layer] : false;
+  const twDef = s.layout === "offset" ? 62 : 84;
+  // Bọc phần đang bôi đen trong ô tiêu đề bằng *…* (bấm lại khi đã bọc thì gỡ)
+  const highlight = () => {
+    const el = ta.current; if (!el) return;
+    let [a, b] = [el.selectionStart, el.selectionEnd];
+    if (a === b) { onFlash("Select some words in the headline first"); return; }
+    while (title[a] === " ") a++; while (b > a && title[b - 1] === " ") b--;
+    const wrapped = title[a - 1] === "*" && title[b] === "*";
+    setText(0, wrapped ? title.slice(0, a - 1) + title.slice(a, b) + title.slice(b + 1) : title.slice(0, a) + "*" + title.slice(a, b) + "*" + title.slice(b));
+  };
   const moved = layer === "text" ? !!(s.tx || s.ty) : layer === "device" ? !!(s.dx || s.dy) : !!(s.dx || s.dy || s.tx || s.ty);
   const actions = <>
     {moved && <button className="gbtn" title="Reset position" onClick={() => setSlide(layer === "text" ? { tx: 0, ty: 0 } : layer === "device" ? { dx: 0, dy: 0 } : { dx: 0, dy: 0, tx: 0, ty: 0 })}><RotateCcw />Reset</button>}
@@ -289,17 +377,22 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
   if (layer === "text") body = <>
     {hiddenNow && <p className="hidnote"><EyeOff />This layer is hidden on this slide.</p>}
     <Group id="s-text" title="Content" right={<span className="mono">{LOCALES[p.loc]}</span>}>
-      <textarea className="field" rows={2} value={title} aria-label="Headline" placeholder="Headline" onChange={(e) => setText(0, e.target.value)} />
+      <textarea ref={ta} className="field" rows={2} value={title} aria-label="Headline" placeholder="Headline" onChange={(e) => setText(0, e.target.value)} />
       <input className="field" value={sub} aria-label="Subtitle" placeholder="Subtitle (optional)" onChange={(e) => setText(1, e.target.value)} />
-      <p className="hint">Tip: double-click the text on the canvas to type in place.</p>
+      <div className="row">
+        <button className="gbtn" title="Select words in the headline, then click to color them" onClick={highlight}><Highlighter />Highlight selection</button>
+        <span className="hint">or wrap words in *stars*</span>
+      </div>
     </Group>
-    <Group id="s-tpos" title="Position">
+    <Group id="s-tpos" title="Position & size">
       <Prop label="Offset">
         <Num prefix="X" value={s.tx ?? 0} step={0.5} onChange={(tx) => setSlide({ tx }, "ptx")} />
         <Num prefix="Y" value={s.ty ?? 0} step={0.5} onChange={(ty) => setSlide({ ty }, "pty")} />
       </Prop>
+      <Slider label="Width" value={s.tw ?? twDef} min={30} max={s.layout === "offset" ? 84 : 100} unit="%" onChange={(tw) => setSlide({ tw }, "ptw")}
+        mark={s.tw !== undefined && s.tw !== twDef} onReset={() => setSlide({ tw: undefined })} />
     </Group>
-    <TypeGroup t={p.theme} set={setTheme} />
+    <TypeGroup sc={slideScope} />
   </>;
   else if (layer === "device") body = <>
     {hiddenNow && <p className="hidnote"><EyeOff />This layer is hidden on this slide.</p>}
@@ -325,11 +418,11 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
     </Group>
     <DeviceControls v={s} scaleRange={[40, 100]} tag="s" onChange={(patch, tg) => setSlide(patch, tg)}
       right={<ApplyAll onClick={() => applyAll({ rx: s.rx, ry: s.ry, rz: s.rz, scale: s.scale }, "Device tilt & size")} />} />
-    <FrameGroup t={p.theme} set={setTheme} />
+    <FrameGroup sc={slideScope} />
   </>;
   else body = <>
     <LayerList onPick={onPickLayer} onToggle={onToggleHidden} rows={[
-      { id: "text", name: "Text", sub: title || "Untitled", hidden: s.hidden?.text },
+      { id: "text", name: "Text", sub: plain(title) || "Untitled", hidden: s.hidden?.text },
       { id: "device", name: "Device", sub: s.img ? "Your screenshot" : "Sample screen", hidden: s.hidden?.device },
     ]} />
     <Group id="s-layout" title="Layout" right={<ApplyAll onClick={() => applyAll({ layout: s.layout }, "Layout")} />}>
@@ -339,7 +432,7 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
         ))}
       </div>
     </Group>
-    <BgGroup t={p.theme} set={setTheme} />
+    <BgGroup sc={slideScope} />
   </>;
 
   return <aside className="right">{head}{crumb(actions)}{body}</aside>;

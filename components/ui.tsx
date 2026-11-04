@@ -2,6 +2,7 @@
 // Kích thước bám lưới 4px: hàng 28px, khoảng cách 8/12/16 — style nằm trong app/globals.css
 // - Prop có `scrub` → kéo ngang trên NHÃN để đổi số (như Framer/Figma); Shift = nhanh ×10, Alt = chậm ×0.1
 // - Group có `id` → bấm tiêu đề để thu gọn, trạng thái nhớ trong localStorage
+// - Prop/Slider có `mark` → chấm xanh cạnh nhãn = giá trị riêng của slide này (đè Project style); bấm chấm (onReset) để bỏ đè
 import { useEffect, useState, type ReactNode, type PointerEvent as RPE } from "react";
 import { X, ChevronRight } from "lucide-react";
 
@@ -24,7 +25,7 @@ export function Seg<T extends string>({ value, options, onChange, full }: {
 export function Num({ value, onChange, step = 1, min = -Infinity, max = Infinity, unit = "", prefix, label }: {
   value: number; onChange: (v: number) => void; step?: number; min?: number; max?: number; unit?: string; prefix?: string; label?: string;
 }) {
-  const fmt = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(1));
+  const fmt = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(step < 0.1 ? 2 : 1)); // bước nhỏ (vd 0.02) thì hiện 2 số lẻ
   const [txt, setTxt] = useState(fmt(value));
   useEffect(() => setTxt(fmt(value)), [value]);
   const commit = (v: number) => { if (Number.isFinite(v)) onChange(Math.min(max, Math.max(min, v))); else setTxt(fmt(value)); };
@@ -37,7 +38,7 @@ export function Num({ value, onChange, step = 1, min = -Infinity, max = Infinity
           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
           if (e.key === "ArrowUp" || e.key === "ArrowDown") {
             e.preventDefault(); const d = (e.key === "ArrowUp" ? 1 : -1) * step * (e.shiftKey ? 10 : 1);
-            commit(Math.round((value + d) * 10) / 10);
+            commit(+(value + d).toFixed(step < 0.1 ? 2 : 1));
           }
         }} />
       {unit && <span className="unit">{unit}</span>}
@@ -66,21 +67,27 @@ function startScrub(e: RPE, s: Scrub) {
 }
 
 // Một hàng thuộc tính: nhãn cột trái 64px, điều khiển chiếm phần còn lại
-export function Prop({ label, children, hot, scrub }: { label: string; children: ReactNode; hot?: boolean; scrub?: Scrub }) {
+export interface Mark { mark?: boolean; onReset?: () => void }
+
+export function Prop({ label, children, hot, scrub, mark, onReset }: { label: string; children: ReactNode; hot?: boolean; scrub?: Scrub } & Mark) {
   return (
-    <div className={`prop ${hot ? "hot" : ""}`}>
+    <div className={`prop ${hot ? "hot" : ""} ${mark ? "ovr" : ""}`}>
       <span className={`plab ${scrub ? "scrub" : ""}`} title={scrub ? "Drag to adjust · Shift faster · Alt finer" : undefined}
-        onPointerDown={scrub ? (e) => startScrub(e, scrub) : undefined}>{label}</span>
+        onPointerDown={scrub ? (e) => startScrub(e, scrub) : undefined}>
+        {mark && <button className="odot" title="Set on this slide only — click to use the project style" aria-label={`Reset ${label} to project style`}
+          onPointerDown={(e) => e.stopPropagation()} onClick={onReset} />}
+        {label}
+      </span>
       <div className="pctl">{children}</div>
     </div>
   );
 }
 
-export function Slider({ label, value, min, max, step = 1, unit = "", onChange }: {
+export function Slider({ label, value, min, max, step = 1, unit = "", onChange, mark, onReset }: {
   label: string; value: number; min: number; max: number; step?: number; unit?: string; onChange: (v: number) => void;
-}) {
+} & Mark) {
   return (
-    <Prop label={label} scrub={{ value, min, max, step, onChange }}>
+    <Prop label={label} scrub={{ value, min, max, step, onChange }} mark={mark} onReset={onReset}>
       <input type="range" aria-label={label} min={min} max={max} step={step} value={value} onChange={(e) => onChange(+e.target.value)}
         style={{ ["--fill" as string]: `${((value - min) / (max - min)) * 100}%` }} />
       <Num value={value} min={min} max={max} step={step} unit={unit} label={label} onChange={onChange} />

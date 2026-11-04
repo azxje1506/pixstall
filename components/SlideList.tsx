@@ -10,7 +10,7 @@ import { GripVertical, Trash2, Plus, CopyPlus, ImageUp, Upload, Image as ImageIc
 import type { CanvasPick, LayerPick } from "./SlideCanvas";
 import type { Project } from "@/lib/types";
 import { LIMIT } from "@/lib/presets";
-import { currentSize, textOf } from "@/lib/rules";
+import { currentSize, textOf, plain } from "@/lib/rules";
 import { SlideCanvas, FeatureCanvas } from "./SlideCanvas";
 
 const TW = 40, TH = 64; // khung thumbnail (px, lưới 4)
@@ -101,8 +101,9 @@ export function SlideList({ p, sel, tab, onPick, onFeature, onMove, onDelete, on
                 <span className="idx">{String(i + 1).padStart(2, "0")}</span>
                 {!s.img && <span className="sdot" title="Sample screen" />}
                 {p.loc !== "en" && !s.t[p.loc] && <span className="tag">EN</span>}
+                {s.override && <span className="odot static" title="This slide has its own style" />}
               </div>
-              <div className="sub">{textOf(s, p.loc)[0] || "Untitled"}</div>
+              <div className="sub">{plain(textOf(s, p.loc)[0]) || "Untitled"}</div>
             </div>
             <div className="rowact" onClick={(e) => e.stopPropagation()}>
               <button className="ibtn" title={s.img ? "Replace image" : "Upload image"} aria-label={`Replace image of slide ${i + 1}`} onClick={() => onReplace(i)}><ImageUp /></button>
@@ -112,7 +113,7 @@ export function SlideList({ p, sel, tab, onPick, onFeature, onMove, onDelete, on
           </div>
           {open && (
             <div className="lchildren">
-              <LayerRow icon={<Type />} name="Text" sub={textOf(s, p.loc)[0] || "Untitled"} on={pick === "text"} hidden={s.hidden?.text}
+              <LayerRow icon={<Type />} name="Text" sub={plain(textOf(s, p.loc)[0]) || "Untitled"} on={pick === "text"} hidden={s.hidden?.text}
                 onClick={() => onLayer(i, "text")} onToggle={() => onToggleHidden(i, "text")} onHover={(v) => onHover(v ? "text" : null)} />
               <LayerRow icon={<Smartphone />} name="Device" sub={s.img ? "Screenshot" : "Sample"} on={pick === "device"} hidden={s.hidden?.device}
                 onClick={() => onLayer(i, "device")} onToggle={() => onToggleHidden(i, "device")} onHover={(v) => onHover(v ? "device" : null)} />

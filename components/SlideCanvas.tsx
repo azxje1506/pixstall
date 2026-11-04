@@ -2,19 +2,21 @@
 // Quy ước: font-size gốc = W/100 px → 1em = 1% bề ngang, nên thumbnail, canvas và file xuất giống hệt nhau
 // Có prop `edit` → chế độ sửa trực tiếp: kéo máy/chữ để dời (dx,dy / tx,ty), 4 góc đổi cỡ, nút tròn xoay, double-click chữ để gõ,
 // gióng theo lề/tâm/phần tử kia + thước đo khoảng cách (px ảnh xuất). front = phần nào nằm trên
-// Root canvas mang data-cv để đo vị trí khi kéo
-import { useState } from "react";
+// Root canvas mang data-cv để đo vị trí khi kéo. Style slide = themeOf(p, s) (Project style + override riêng slide)
+// Chữ: *từ* được tô màu hl; khi double-click thì dòng đó remount (đổi key) sang chữ thô có dấu sao để gõ an toàn
+// Chọn layer Text: 2 tay cầm cạnh trái/phải kéo đổi bề ngang (tw); quá 3 dòng thì hiện cảnh báo trên canvas
+import { useLayoutEffect, useRef, useState } from "react";
+import type { Theme, Slide } from "@/lib/types";
 import type { CSSProperties, ReactNode, PointerEvent as RPE, MouseEvent as RME, KeyboardEvent as RKE, FocusEvent as RFE } from "react";
 import { FEATURE_ICONS } from "./icons";
 import type { Project, SizePreset } from "@/lib/types";
 import { FONTS, FEATURE_SIZE } from "@/lib/presets";
-import { textOf } from "@/lib/rules";
+import { textOf, themeOf, richParts } from "@/lib/rules";
 import { mockScreen } from "@/lib/mocks";
 import { Device, ASPECT } from "./Device";
 
 // Nền slide; panorama = một nền dài n slide, slide i lấy khúc thứ i → lướt store thấy liền mạch
-function background(p: Project, i: number, hEm: number, n: number): CSSProperties {
-  const t = p.theme;
+function background(t: Theme, i: number, hEm: number, n: number): CSSProperties {
   if (t.bg === "color") return { background: t.solid };
   if (t.bg === "gradient" || t.bg === "blur") return { background: `linear-gradient(165deg,${t.c1},${t.c2})` };
   return {
@@ -86,7 +88,34 @@ function measure(a: Rect, o: Rect, pxPerEm: number): Guides["m"] {
 function useEditKit(edit: CanvasEdit | undefined, k: number, hEm: number, o: { dx: number; dy: number; tx: number; ty: number },
   scale: { v: number; min: number; max: number; mul: number } | null, rot: { v: number } | null, pxPerEm: number) {
   const [g, setG] = useState<Guides>({});
-  if (!edit) return { hitDev: undefined, hitText: undefined, handle: undefined, guides: null, editable: () => undefined, root: undefined };
+  const [editing, setEditing] = useState<string | null>(null); // id dòng chữ đang gõ
+  // Một dòng chữ: không sửa thì tô *từ*; đang gõ thì hiện chữ thô. key đổi theo trạng thái → React dựng lại thẻ, tránh lệch DOM
+  const rich = (val: string, hl: string): ReactNode => richParts(val).map(([x, h], i) => (h ? <span key={i} style={{ color: hl }}>{x}</span> : x));
+  const lineOf = (id: string, val: string, hl: string, commit: (v: string) => void) => {
+    if (!edit) return { key: "r", props: {}, children: rich(val, hl) };
+    const on = editing === id;
+    return {
+      key: on ? "e" : "r",
+      children: on ? val : rich(val, hl),
+      props: {
+        "data-line": id,
+        suppressContentEditableWarning: true,
+        onDoubleClick: (e: RME<HTMLElement>) => {
+          const root = e.currentTarget.closest("[data-cv]");
+          setEditing(id);
+          requestAnimationFrame(() => {
+            const el = root?.querySelector<HTMLElement>(`[data-line="${id}"]`);
+            if (!el) return;
+            el.contentEditable = "true"; el.focus();
+            const rg = document.createRange(); rg.selectNodeContents(el); const sl = getSelection(); sl?.removeAllRanges(); sl?.addRange(rg);
+          });
+        },
+        onKeyDown: (e: RKE<HTMLElement>) => { e.stopPropagation(); if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur(); } if (e.key === "Escape") e.currentTarget.blur(); },
+        onBlur: (e: RFE<HTMLElement>) => { const v = e.currentTarget.innerText.trim(); setEditing(null); if (v !== val) commit(v); },
+      },
+    };
+  };
+  if (!edit) return { hitDev: undefined, hitText: undefined, handle: undefined, guides: null, lineOf, root: undefined };
 
   const drag = (e: RPE, what: LayerPick) => {
     if (e.button !== 0 || (e.target as HTMLElement).isContentEditable) return;
@@ -154,16 +183,6 @@ function useEditKit(edit: CanvasEdit | undefined, k: number, hEm: number, o: { d
     </>
   ) : undefined;
 
-  // Double-click chữ → gõ thẳng; Enter/rời ô thì gọi commit(text mới)
-  const editable = (val: string, commit: (v: string) => void) => ({
-    suppressContentEditableWarning: true,
-    onDoubleClick: (e: RME<HTMLElement>) => {
-      const el = e.currentTarget; el.contentEditable = "true"; el.focus();
-      const rg = document.createRange(); rg.selectNodeContents(el); const sl = getSelection(); sl?.removeAllRanges(); sl?.addRange(rg);
-    },
-    onKeyDown: (e: RKE<HTMLElement>) => { e.stopPropagation(); if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur(); } if (e.key === "Escape") e.currentTarget.blur(); },
-    onBlur: (e: RFE<HTMLElement>) => { const el = e.currentTarget; el.contentEditable = "false"; const v = el.innerText.trim(); if (v !== val) commit(v); },
-  });
 
   const m = g.m;
   const guides = (
@@ -180,7 +199,7 @@ function useEditKit(edit: CanvasEdit | undefined, k: number, hEm: number, o: { d
   );
   // Bấm nền slide (chỗ không có layer) → chọn cấp Slide
   const root = { onPointerDown: (e: RPE) => { if (e.button !== 0) return; e.stopPropagation(); edit.onSel("slide"); } };
-  return { hitDev: hit("device"), hitText: hit("text"), handle, guides, editable, root };
+  return { hitDev: hit("device"), hitText: hit("text"), handle, guides, lineOf, root };
 }
 
 function Screen({ p, i }: { p: Project; i: number }) {
@@ -190,18 +209,26 @@ function Screen({ p, i }: { p: Project; i: number }) {
 }
 
 export function SlideCanvas({ p, index, width, size, loc, edit }: { p: Project; index: number; width: number; size: SizePreset; loc?: string; edit?: CanvasEdit }) {
-  const s = p.slides[index], t = p.theme, n = p.slides.length;
+  const s = p.slides[index], t = themeOf(p, s), n = p.slides.length;
   const L = loc ?? p.loc, k = width / 100;
+  const cv = useRef<HTMLDivElement>(null);
+  const [lines, setLines] = useState(0); // số dòng tiêu đề (chỉ đo khi đang sửa)
   const dx = s?.dx ?? 0, dy = s?.dy ?? 0, tx = s?.tx ?? 0, ty = s?.ty ?? 0;
   const hEm = (100 * size.h) / size.w;
   const centered = s && (s.layout === "center" || s.layout === "bleed" || s.layout === "bottom");
   // Máy canh giữa thì nở 2 phía khi kéo góc → nhân 2; layout duo không có nút đổi cỡ
   const kit = useEditKit(edit, k, hEm, { dx, dy, tx, ty }, s && s.layout !== "duo" ? { v: s.scale, min: 40, max: 100, mul: centered ? 2 : 1 } : null,
     s && s.layout !== "duo" ? { v: s.rz } : null, size.w / 100);
+  const titleRaw = s ? textOf(s, L)[0] : "";
+  useLayoutEffect(() => {
+    if (!edit) return;
+    const h = cv.current?.querySelector<HTMLElement>('[data-line="t0"]');
+    if (h) setLines(Math.round(h.getBoundingClientRect().height / ((width / 100) * t.tsize * t.tlh)));
+  }, [edit, titleRaw, width, t.tsize, t.tlh, t.font, t.tweight, s?.tw, s?.layout]);
   if (!s) return null;
   const [title, sub] = textOf(s, L);
   const tab = size.kind === "tablet", asp = ASPECT[size.kind];
-  const ink = t.ink === "light" ? "#fff" : "#15151A";
+  const ink = t.tcolor || (t.ink === "light" ? "#fff" : "#15151A");
 
   // --- Tính vị trí chữ + máy theo layout (đơn vị em) ---
   const padT = tab ? 6 : 9;
@@ -209,7 +236,7 @@ export function SlideCanvas({ p, index, width, size, loc, edit }: { p: Project; 
   const below = padT + textH + 4; // máy bắt đầu dưới khối chữ
   const textStyle: CSSProperties = { position: "absolute", left: "8em", right: "8em", zIndex: s.front === "device" ? 0 : 3, textAlign: t.align, color: ink, fontFamily: FONTS[t.font], transform: tx || ty ? `translate(${tx}em,${ty}em)` : undefined };
 
-  const { hitDev, hitText, handle, editable } = kit;
+  const { hitDev, hitText, handle, lineOf } = kit;
   const setLine = (i: 0 | 1) => (v: string) => { const cur = [...textOf(s, L)] as [string, string]; cur[i] = v; edit?.onPatch({ t: { ...s.t, [L]: cur } }, ""); };
   const dev = { kind: size.kind, store: p.store, theme: t, rx: s.rx, ry: s.ry, rz: s.rz, hit: hitDev };
   let devices: ReactNode = null;
@@ -236,10 +263,23 @@ export function SlideCanvas({ p, index, width, size, loc, edit }: { p: Project; 
       );
     }
   }
-  if (s.layout === "offset") { textStyle.textAlign = "left"; textStyle.right = "30em"; }
+  // Bề ngang khối chữ: mặc định 84% (offset: 62%, bám lề trái); tw đè lên. Khối giữa thì nở đều 2 bên
+  const offset = s.layout === "offset", twDef = offset ? 62 : 84, tw = s.tw ?? twDef;
+  if (offset) { textStyle.textAlign = "left"; textStyle.left = "8em"; textStyle.right = `${100 - 8 - tw}em`; }
+  else { textStyle.left = `${(100 - tw) / 2}em`; textStyle.right = `${(100 - tw) / 2}em`; }
+  // Tay cầm đổi bề ngang (khi layer Text đang chọn)
+  const widthHandle = (side: "l" | "r") => (
+    <span key={side} className={`ed-wh ${side}`} title="Drag to change text width" onPointerDown={(e) => {
+      e.stopPropagation();
+      const sign = side === "r" ? 1 : -1, mul = offset ? (side === "r" ? 1 : 0) : 2;
+      if (!mul) return;
+      startDrag(e, k, (mx) => edit?.onPatch({ tw: Math.round(Math.min(offset ? 92 - 8 : 100, Math.max(30, tw + mx * sign * mul))) } as Partial<Slide>, "drag-tw"));
+    }} />
+  );
+  const L0 = lineOf("t0", title, t.hl, setLine(0)), L1 = lineOf("t1", sub, t.hl, setLine(1));
 
   return (
-    <div data-cv {...kit.root} style={{ position: "relative", overflow: "hidden", width, height: (width * size.h) / size.w, fontSize: width / 100, ...background(p, index, hEm, n) }}>
+    <div data-cv ref={cv} {...kit.root} style={{ position: "relative", overflow: "hidden", width, height: (width * size.h) / size.w, fontSize: width / 100, ...background(t, index, hEm, n) }}>
       {t.bg === "blur" && s.img && (
         <>
           <div style={{ position: "absolute", inset: "-10%", backgroundImage: `url(${s.img})`, backgroundSize: "cover", backgroundPosition: "center", filter: `blur(${t.blur * 0.12}em)` }} />
@@ -247,8 +287,10 @@ export function SlideCanvas({ p, index, width, size, loc, edit }: { p: Project; 
         </>
       )}
       {!s.hidden?.text && <div {...hitText} style={textStyle}>
-        <h2 {...editable(title, setLine(0))} style={{ fontSize: `${t.tsize}em`, fontWeight: 800, lineHeight: 1.08, letterSpacing: "-.02em", margin: 0 }}>{title}</h2>
-        {sub && <p {...editable(sub, setLine(1))} style={{ fontSize: `${t.tsize * 0.48}em`, marginTop: "1.4em", marginBottom: 0, opacity: 0.85, fontWeight: 500, lineHeight: 1.3 }}>{sub}</p>}
+        <h2 key={L0.key} {...L0.props} style={{ fontSize: `${t.tsize}em`, fontWeight: t.tweight, lineHeight: t.tlh, letterSpacing: "-.02em", margin: 0 }}>{L0.children}</h2>
+        {sub && <p key={"s" + L1.key} {...L1.props} style={{ fontSize: `${t.tsize * 0.48}em`, marginTop: "1.4em", marginBottom: 0, opacity: 0.85, fontWeight: 500, lineHeight: 1.3 }}>{L1.children}</p>}
+        {edit?.sel === "text" && [widthHandle("l"), widthHandle("r")]}
+        {edit && lines > 3 && <span className="ed-warn">{lines} lines · shorten or widen</span>}
       </div>}
       {!s.hidden?.device && devices}
       {kit.guides}
@@ -262,18 +304,20 @@ export function FeatureCanvas({ p, width, edit }: { p: Project; width: number; e
   const hEm = (100 * FEATURE_SIZE.h) / FEATURE_SIZE.w;
   const dx = f.dx ?? 0, dy = f.dy ?? 0, tx = f.tx ?? 0, ty = f.ty ?? 0;
   const kit = useEditKit(edit, k, hEm, { dx, dy, tx, ty }, { v: f.scale, min: 12, max: 30, mul: 1 }, { v: f.rz }, FEATURE_SIZE.w / 100);
-  const ink = t.ink === "light" ? "#fff" : "#15151A";
+  const ink = t.tcolor || (t.ink === "light" ? "#fff" : "#15151A");
   const Icon = FEATURE_ICONS[f.icon] ?? FEATURE_ICONS.sprout;
   const dw = f.scale, dev = { kind: "phone" as const, store: "play" as const, theme: t, rx: f.rx, ry: f.ry, rz: f.rz };
   const y0 = (hEm - dw * ASPECT.phone) / 2;
+  const FN = kit.lineOf("fn", f.name, t.hl, (name) => edit?.onPatch({ name }, ""));
+  const FT = kit.lineOf("ft", f.tagline, t.hl, (tagline) => edit?.onPatch({ tagline }, ""));
   return (
-    <div data-cv {...kit.root} style={{ position: "relative", overflow: "hidden", width, height: (width * FEATURE_SIZE.h) / FEATURE_SIZE.w, fontSize: width / 100, ...background(p, 0, hEm, 1) }}>
+    <div data-cv {...kit.root} style={{ position: "relative", overflow: "hidden", width, height: (width * FEATURE_SIZE.h) / FEATURE_SIZE.w, fontSize: width / 100, ...background(t, 0, hEm, 1) }}>
       <div {...kit.hitText} style={{ position: "absolute", left: "7em", top: "50%", transform: `translate(${tx}em, calc(-50% + ${ty}em))`, color: ink, fontFamily: FONTS[t.font], zIndex: f.front === "device" ? 0 : 3, width: "48em" }}>
         <div style={{ width: "10em", height: "10em", borderRadius: "2.6em", background: "#fff", display: "grid", placeItems: "center", boxShadow: "0 .8em 2.4em rgba(0,0,0,.16)", color: t.c1 }}>
           <Icon style={{ width: "5.4em", height: "5.4em" }} strokeWidth={2} />
         </div>
-        <h2 {...kit.editable(f.name, (name) => edit?.onPatch({ name }, ""))} style={{ fontSize: "7em", margin: ".3em 0 0", fontWeight: 800, letterSpacing: "-.03em", lineHeight: 1 }}>{f.name}</h2>
-        <p {...kit.editable(f.tagline, (tagline) => edit?.onPatch({ tagline }, ""))} style={{ fontSize: "3em", margin: ".35em 0 0", opacity: 0.88, fontWeight: 500 }}>{f.tagline}</p>
+        <h2 key={FN.key} {...FN.props} style={{ fontSize: "7em", margin: ".3em 0 0", fontWeight: 800, letterSpacing: "-.03em", lineHeight: 1 }}>{FN.children}</h2>
+        <p key={"t" + FT.key} {...FT.props} style={{ fontSize: "3em", margin: ".35em 0 0", opacity: 0.88, fontWeight: 500 }}>{FT.children}</p>
       </div>
       {f.device && (
         // Cụm máy bọc chung 1 khung để kéo cả cặp; khung phủ đúng vùng 2 máy

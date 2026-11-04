@@ -3,7 +3,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Project } from "./types";
-import { sampleProject } from "./presets";
+import { sampleProject, DEFAULT_THEME } from "./presets";
 import { loadProject, saveProject, askPersist } from "./storage";
 
 const MAX = 60;
@@ -22,7 +22,8 @@ export function useProject() {
   // Nạp bản đã lưu (chạy 1 lần phía client)
   useEffect(() => {
     loadProject().then((got) => {
-      if (got) setP({ ...sampleProject(), ...got }); else setFresh(true);
+      // Dự án cũ thiếu trường theme mới → bù bằng DEFAULT_THEME
+      if (got) setP({ ...sampleProject(), ...got, theme: { ...DEFAULT_THEME, ...got.theme } }); else setFresh(true);
       loaded.current = true;
       setSave("saved");
       askPersist();

@@ -456,3 +456,22 @@ kbd { font: 500 10.5px var(--font-mono), monospace; padding: 2px 6px; border-rad
 .dark .hidnote { background: #3a2a05; color: #fcd34d; }
 /* Canvas: viền layer khi rê trên cây Layers */
 .ed-hit.hov:not(.sel) { outline: 1.5px solid color-mix(in srgb, var(--accent) 80%, transparent) !important; }
+
+/* --- Đợt B: style riêng từng slide + chữ --- */
+.plab { display: flex; align-items: center; gap: 4px; }
+.odot { width: 6px; height: 6px; border-radius: 50%; background: #3B82F6; flex: none; padding: 0; position: relative; }
+.odot:not(.static)::after { content: ""; position: absolute; inset: -6px; }
+.odot:not(.static):hover { box-shadow: 0 0 0 3px color-mix(in srgb, #3B82F6 25%, transparent); }
+.prop.ovr .plab { color: #2563EB; }
+.dark .prop.ovr .plab { color: #93C5FD; }
+.allbadge.own { background: color-mix(in srgb, #3B82F6 14%, transparent); color: #2563EB; }
+.allbadge.muted { background: none; padding: 0; }
+.ibtn.sm { width: 22px; height: 22px; }
+.app .ibtn.sm svg.lucide { width: 12px; height: 12px; }
+.ownnote { display: flex; align-items: center; gap: 8px; margin: 12px 16px 0; padding: 8px 8px 8px 12px; border-radius: 8px; background: color-mix(in srgb, #3B82F6 8%, transparent); font-size: 12px; line-height: 1.4; }
+.ownnote span { flex: 1; }
+/* Tay cầm đổi bề ngang chữ + cảnh báo dòng */
+.ed-wh { position: absolute; top: 50%; width: 8px; height: 24px; margin-top: -12px; border-radius: 3px; background: #fff; border: 1.5px solid var(--accent); cursor: ew-resize; z-index: 10; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+.ed-wh::after { content: ""; position: absolute; inset: -6px; }
+.ed-wh.l { left: -5px; } .ed-wh.r { right: -5px; }
+.ed-warn { position: absolute; left: 50%; bottom: 100%; transform: translate(-50%, -6px); white-space: nowrap; font: 600 10px/18px var(--font-inter), sans-serif; padding: 0 8px; border-radius: 999px; background: #F59E0B; color: #fff; pointer-events: none; z-index: 11; }

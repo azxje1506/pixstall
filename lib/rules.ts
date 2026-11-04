@@ -1,5 +1,5 @@
 // Hàm tiện ích: lấy cỡ máy đang chọn, chọn khung theo store, kiểm tra luật store trước khi xuất
-import type { Project, SizePreset, Store, FrameStyle, Slide } from "./types";
+import type { Project, SizePreset, Store, FrameStyle, Slide, Theme } from "./types";
 import { STORE_SIZES, LIMIT, LOCALES, APPLE_ACCEPTED } from "./presets";
 
 export const allSizes = (p: Project): SizePreset[] => [...STORE_SIZES, ...p.customSizes];
@@ -10,6 +10,12 @@ export const currentSize = (p: Project): SizePreset =>
 // "auto" = iPhone cho App Store, Pixel cho Google Play
 export const resolveFrame = (f: FrameStyle, store: Store): Exclude<FrameStyle, "auto"> =>
   f === "auto" ? (store === "ios" ? "iphone" : "pixel") : f;
+
+// Style thực tế của một slide = Project style + phần slide đè lên
+export const themeOf = (p: Project, s?: Slide): Theme => (s?.override ? { ...p.theme, ...s.override } : p.theme);
+// Tách "Build habits that *stick*" → [["Build habits that ", false], ["stick", true]] để tô màu từ nhấn
+export const richParts = (str: string): [string, boolean][] => str.split(/(\*[^*]+\*)/g).filter(Boolean).map((x) => (/^\*[^*]+\*$/.test(x) ? [x.slice(1, -1), true] : [x, false]));
+export const plain = (str: string) => str.replace(/\*([^*]+)\*/g, "$1");
 
 // Chữ của slide theo ngôn ngữ, thiếu thì lấy tiếng Anh
 export const textOf = (s: Slide, loc: string): [string, string] => s.t[loc] ?? s.t.en ?? ["", ""];
@@ -36,7 +42,7 @@ export function checkProject(p: Project): Issue[] {
   if (n < mn) out.push({ level: "warn", msg: `${storeName} needs at least ${mn} screenshots` });
   if (n > mx) out.push({ level: "warn", msg: `${storeName} allows max ${mx} — ${n - mx} will be skipped` });
   p.slides.forEach((s, i) => {
-    const [title] = textOf(s, p.loc);
+    const title = plain(textOf(s, p.loc)[0]);
     if (title.length > 34) out.push({ level: "warn", msg: `Slide ${i + 1}: headline is long, may wrap to 3+ lines`, slide: i });
     if (!title.trim()) out.push({ level: "warn", msg: `Slide ${i + 1}: headline is empty`, slide: i });
   });
