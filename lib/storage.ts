@@ -1,5 +1,5 @@
 // Lưu dự án vào IndexedDB (chứa được ảnh lớn, hàng trăm MB) thay cho localStorage (~5MB, đầy là lỗi ngầm)
-// Một store "kv", khoá "project". Lần đầu tự chuyển dữ liệu cũ từ localStorage sang rồi xoá bản cũ.
+// Store "kv" khoá "project" (chỉ JSON, ảnh nằm ở store "images" — lib/images.ts). Lần đầu tự chuyển dữ liệu cũ từ localStorage sang rồi xoá bản cũ.
 "use client";
 import type { Project } from "./types";
 
@@ -7,10 +7,15 @@ const DB = "pixstall", STORE = "kv", KEY = "project";
 const LEGACY = "pixstall:project:v1";
 
 let dbp: Promise<IDBDatabase> | null = null;
-function db(): Promise<IDBDatabase> {
+export function db(): Promise<IDBDatabase> {
   if (!dbp) dbp = new Promise((res, rej) => {
-    const r = indexedDB.open(DB, 1);
-    r.onupgradeneeded = () => r.result.createObjectStore(STORE);
+    // v2: thêm store "images" (kho ảnh, xem lib/images.ts)
+    const r = indexedDB.open(DB, 2);
+    r.onupgradeneeded = () => {
+      const d = r.result;
+      if (!d.objectStoreNames.contains(STORE)) d.createObjectStore(STORE);
+      if (!d.objectStoreNames.contains("images")) d.createObjectStore("images");
+    };
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
   });

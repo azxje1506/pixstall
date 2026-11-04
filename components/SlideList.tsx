@@ -39,7 +39,7 @@ interface Props {
 
 // Icon theo loại layer
 export const layerIcon = (id: LayerId, name: string): ReactNode =>
-  id === "device" ? <Smartphone /> : id === "title" ? <Heading /> : id === "sub" ? <Pilcrow /> : name === "Badge" ? <Tag /> : <Type />;
+  id === "device" || id === "device2" ? <Smartphone /> : id === "title" ? <Heading /> : id === "sub" ? <Pilcrow /> : name === "Badge" ? <Tag /> : <Type />;
 
 // Hàng layer con (thụt vào dưới slide/feature)
 function LayerRow({ icon, name, sub, on, hidden, onClick, onToggle, onHover, onRemove }: { icon: ReactNode; name: string; sub: string; on: boolean; hidden?: boolean; onClick: () => void; onToggle?: () => void; onHover: (v: boolean) => void; onRemove?: () => void }) {
@@ -121,10 +121,10 @@ export function SlideList({ p, sel, tab, onPick, onFeature, onMove, onDelete, on
           </div>
           {open && (
             <div className="lchildren">
-              {layersOf(s, p.loc).map((l) => (
+              {layersOf(s, p.loc, ((i + 1) % p.slides.length) + 1).map((l) => (
                 <LayerRow key={l.id} icon={layerIcon(l.id, l.name)} name={l.name} sub={l.sub} on={pick === l.id} hidden={isHidden(s, l.id)}
                   onClick={() => onLayer(i, l.id)} onToggle={() => onToggleHidden(i, l.id)} onHover={(v) => onHover(v ? l.id : null)}
-                  onRemove={l.id === "device" ? undefined : () => onRemoveLayer(i, l.id)} />
+                  onRemove={l.id === "device" || l.id === "device2" ? undefined : () => onRemoveLayer(i, l.id)} />
               ))}
               <button className="litem ladd" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); onAddMenu(r.left, r.bottom + 4, i); }}>
                 <span className="lico"><Plus /></span><span className="lname">Add text</span>

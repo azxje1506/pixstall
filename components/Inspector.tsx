@@ -8,16 +8,19 @@
 // Mọi thay đổi đi qua update(fn, tag) — tag gộp các lần kéo slider thành 1 bước undo
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ImageUp, CopyPlus, ImageOff, RotateCcw, Smartphone, EyeOff, Eye, TextAlignStart, TextAlignCenter, Sun, Moon, Type,
-  PanelBottom, ArrowDownToLine, Copy, MoveRight, CopyCheck, ChevronRight, Frame, Highlighter, Plus, Trash2, Image as ImageIcon } from "lucide-react";
+  PanelBottom, ArrowDownToLine, Copy, MoveRight, CopyCheck, ChevronRight, Frame, Highlighter, Plus, Trash2, Crop, Link2, Image as ImageIcon } from "lucide-react";
 import type { Project, Slide, Theme, ThemeKey, Feature, Layout, Tilt3D, FrameStyle, FrameColor, Bg } from "@/lib/types";
 import { FONTS, FRAME_COLORS, GRADIENTS, TILT_PRESETS, DEFAULT_THEME, LOCALES } from "@/lib/presets";
-import { textOf, themeOf, plain } from "@/lib/rules";
+import { textOf, themeOf, plain, allSizes } from "@/lib/rules";
 import { mockScreen } from "@/lib/mocks";
 import { FEATURE_ICONS } from "./icons";
 import { Seg, Slider, Group, Num, Prop, Tabs } from "./ui";
 import { ColorField } from "./ColorField";
 import type { CanvasPick, LayerPick } from "./SlideCanvas";
 import { isLayer, isHidden, layersOf, layerName as nameOf, extraOf, extraText, patchExtra, type LayerId } from "@/lib/layers";
+import { imgSrc, imgMeta } from "@/lib/images";
+import { ASPECT } from "./Device";
+import { panRange, screenRatio } from "./SlideCanvas";
 import { layerIcon } from "./SlideList";
 
 type Update = (fn: (d: Project) => Project, tag?: string) => void;
@@ -238,11 +241,13 @@ function StyleTab({ sc, owned, onClearAll }: { sc: Scope; owned: number; onClear
   );
 }
 
-export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidden, onRemoveLayer, onAddMenu, onReplace, onReplaceFile, onDuplicate, onFlash }: {
+type ImgKey = "img" | "img2";
+export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidden, onRemoveLayer, onAddMenu, onReplace, onReplaceFile, onDuplicate, onFlash, crop, onCrop }: {
   p: Project; sel: number; tab: "slide" | "feature"; update: Update; pick: CanvasPick;
   onPickLayer: (l: CanvasPick) => void; onToggleHidden: (l: LayerPick) => void;
   onRemoveLayer: (l: LayerId) => void; onAddMenu: (x: number, y: number) => void;
-  onReplace: () => void; onReplaceFile: (f?: File) => void; onDuplicate: () => void; onFlash: (m: string, undo?: boolean) => void;
+  onReplace: (k?: ImgKey) => void; onReplaceFile: (f: File | undefined, k?: ImgKey) => void; onDuplicate: () => void; onFlash: (m: string, undo?: boolean) => void;
+  crop: LayerId | null; onCrop: (l: LayerId | null) => void;
 }) {
   const [ptab, setPtab] = useState<PTab>("item");
   const [hot, setHot] = useState(false); // kéo file ngang thẻ Screenshot
@@ -287,6 +292,7 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
   };
 
   const isFeature = tab === "feature";
+  const currentKind = (allSizes(p).find((z) => z.id === p.sizeId) ?? { kind: "phone" as const }).kind;
   const layer: LayerId | null = isLayer(pick) ? pick : null;
   const head = (
     <div className="phead">
@@ -376,9 +382,38 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
       <span className="hint">or select words right on the canvas</span>
     </div>
   );
-  const [lx, ly] = layer === "title" ? [s.tx, s.ty] : layer === "sub" ? [s.sx, s.sy] : layer === "device" ? [s.dx, s.dy] : [0, 0];
+  const [lx, ly] = layer === "title" ? [s.tx, s.ty] : layer === "sub" ? [s.sx, s.sy] : layer === "device" ? [s.dx, s.dy] : layer === "device2" ? [s.bx, s.by] : [0, 0];
   const moved = layer && !ex ? !!(lx || ly) : !layer && !!(s.dx || s.dy || s.tx || s.ty || s.sx || s.sy);
-  const resetPos = () => setSlide(layer === "title" ? { tx: 0, ty: 0 } : layer === "sub" ? { sx: 0, sy: 0 } : layer === "device" ? { dx: 0, dy: 0 } : { dx: 0, dy: 0, tx: 0, ty: 0, sx: 0, sy: 0 });
+  const resetPos = () => setSlide(layer === "title" ? { tx: 0, ty: 0 } : layer === "sub" ? { sx: 0, sy: 0 } : layer === "device" ? { dx: 0, dy: 0 } : layer === "device2" ? { bx: 0, by: 0 } : { dx: 0, dy: 0, tx: 0, ty: 0, sx: 0, sy: 0, bx: 0, by: 0 });
+  const nextNo = ((sel + 1) % p.slides.length) + 1, linked = p.slides[nextNo - 1];
+
+  // Thẻ ảnh chụp dùng chung cho máy chính / máy 2: xem ảnh, bấm hoặc thả file để thay
+  const shotCard = (k: ImgKey, src: string | null | undefined, mock: number, title: string, hint: string, extra: ReactNode) => (
+    <div className={`shot ${hot ? "hot" : ""}`}
+      onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); e.stopPropagation(); setHot(true); } }}
+      onDragLeave={() => setHot(false)}
+      onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setHot(false); onReplaceFile(e.dataTransfer.files[0], k); }}>
+      <div className="shot-img">
+        {src ? <img src={imgSrc(src, true)} alt="" draggable={false} /> : <div className="shot-mock" dangerouslySetInnerHTML={{ __html: mockScreen(mock) }} />}
+        {!src && <span className="shot-tag">Sample</span>}
+      </div>
+      <div className="shot-meta">
+        <span className="shot-t">{title}</span>
+        <span className="hint">{hot ? "Drop to replace" : hint}</span>
+        <span className="row g4">{extra}</span>
+      </div>
+    </div>
+  );
+
+  const pr = panRange(s.img, s, screenRatio(currentKind, slideScope.t));
+  // Cảnh báo lệch tỉ lệ: tỉ lệ ảnh so với tỉ lệ màn (trừ viền máy) lệch >6% thì báo phần nào bị cắt
+  const ratioNote = (() => {
+    const m = imgMeta(s.img); if (!m || s.fit === "fit") return null;
+    const t = slideScope.t, bz = t.frame === "none" ? 0 : t.bezel / 100, kind = currentKind;
+    const scr = (ASPECT[kind] - 2 * bz) / (1 - 2 * bz), img = m.h / m.w, d = img / scr - 1;
+    if (Math.abs(d) < 0.06) return null;
+    return <p className="warnline small"><Crop />{m.w}×{m.h} is {d > 0 ? "taller" : "wider"} than this screen — the {d > 0 ? "top & bottom" : "sides"} get cropped. Drag to reposition or switch to Fit.</p>;
+  })();
   const actions = <>
     {moved && <button className="gbtn" title="Reset position" onClick={resetPos}><RotateCcw />Reset</button>}
     {layer && <button className="ibtn" title={hiddenNow ? "Show layer" : "Hide layer"} aria-label={hiddenNow ? "Show layer" : "Hide layer"} onClick={() => onToggleHidden(layer)}>{hiddenNow ? <EyeOff /> : <Eye />}</button>}
@@ -434,33 +469,62 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
     </>;
   } else if (layer === "device") body = <>
     {hidNote}
-    {/* Thẻ ảnh chụp: xem ảnh (hoặc màn mẫu), bấm/thả để thay, gỡ để quay về màn mẫu */}
-    <Group id="s-shot" title="Screenshot">
-      <div className={`shot ${hot ? "hot" : ""}`}
-        onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); e.stopPropagation(); setHot(true); } }}
-        onDragLeave={() => setHot(false)}
-        onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setHot(false); onReplaceFile(e.dataTransfer.files[0]); }}>
-        <div className="shot-img">
-          {s.img ? <img src={s.img} alt="" draggable={false} /> : <div className="shot-mock" dangerouslySetInnerHTML={{ __html: mockScreen(s.mock) }} />}
-          {!s.img && <span className="shot-tag">Sample</span>}
-        </div>
-        <div className="shot-meta">
-          <span className="shot-t">{s.img ? "Your screenshot" : "Sample screen"}</span>
-          <span className="hint">{hot ? "Drop to replace" : s.img ? "Drop a new image to replace" : "Replace it with your app's screen"}</span>
-          <span className="row g4">
-            <button className="primary sm" onClick={onReplace}><ImageUp />{s.img ? "Replace" : "Upload"}</button>
-            {s.img && <button className="ghost sm" title="Remove image" aria-label="Remove image" onClick={() => setSlide({ img: null })}><ImageOff /></button>}
-          </span>
-        </div>
-      </div>
+    <Group id="s-shot" title="Screenshot" right={s.img && <span className="mono">{imgMeta(s.img) ? `${imgMeta(s.img)!.w}×${imgMeta(s.img)!.h}` : ""}</span>}>
+      {shotCard("img", s.img, s.mock, s.img ? "Your screenshot" : "Sample screen", s.img ? "Drop a new image to replace" : "Replace it with your app's screen", <>
+        <button className="primary sm" onClick={() => onReplace("img")}><ImageUp />{s.img ? "Replace" : "Upload"}</button>
+        {s.img && <button className="ghost sm" title="Remove image" aria-label="Remove image" onClick={() => setSlide({ img: null })}><ImageOff /></button>}
+      </>)}
     </Group>
+    {/* Căn ảnh trong màn: Fill (cắt cho kín) / Fit (hiện trọn, viền đen), phóng to, dời */}
+    {s.img && (
+      <Group id="s-img" title="Image in screen" right={(s.ix || s.iy || (s.iz ?? 1) !== 1 || s.fit === "fit") ? <button className="gbtn" onClick={() => setSlide({ ix: 0, iy: 0, iz: 1, fit: "fill" })}><RotateCcw />Reset</button> : undefined}>
+        <Prop label="Mode">
+          <Seg full value={s.fit ?? "fill"} onChange={(fit: "fill" | "fit") => setSlide({ fit })} options={[{ v: "fill", label: "Fill" }, { v: "fit", label: "Fit" }]} />
+        </Prop>
+        <Slider label="Zoom" value={Math.round((s.iz ?? 1) * 100)} min={100} max={300} step={5} unit="%" onChange={(v) => setSlide({ iz: v / 100 }, "iz")} />
+        {/* Offset: -100..100 = mép này → mép kia của phần ảnh còn dư; trục không dư thì ẩn */}
+        {(pr[0] > 0 || pr[1] > 0) ? (
+          <Prop label="Offset">
+            {pr[0] > 0 && <Num prefix="X" value={s.ix ?? 0} step={5} min={-100} max={100} onChange={(ix) => setSlide({ ix }, "ix")} />}
+            {pr[1] > 0 && <Num prefix="Y" value={s.iy ?? 0} step={5} min={-100} max={100} onChange={(iy) => setSlide({ iy }, "iy")} />}
+          </Prop>
+        ) : <p className="hint">The whole screenshot is visible — zoom in to reposition it.</p>}
+        <button className={crop === "device" ? "primary sm wide" : "ghost sm wide"} onClick={() => onCrop(crop === "device" ? null : "device")}>
+          <Crop />{crop === "device" ? "Done adjusting" : "Adjust on canvas"}
+        </button>
+        {ratioNote}
+      </Group>
+    )}
     <DeviceControls v={s} scaleRange={[40, 100]} tag="s" onChange={(patch, tg) => setSlide(patch, tg)}
       right={<ApplyAll onClick={() => applyAll({ rx: s.rx, ry: s.ry, rz: s.rz, scale: s.scale }, "Device tilt & size")} />} />
     <FrameGroup sc={slideScope} />
   </>;
+  // Máy 2 của Duo: ảnh riêng hoặc liên kết ảnh slide kế tiếp; vị trí + nghiêng riêng; cỡ & 3D dùng chung với Device
+  else if (layer === "device2") body = <>
+    {hidNote}
+    <Group id="s-shot2" title="Screenshot">
+      {s.img2
+        ? shotCard("img2", s.img2, 0, "Own screenshot", "Only used on this slide", <>
+            <button className="primary sm" onClick={() => onReplace("img2")}><ImageUp />Replace</button>
+            <button className="ghost sm" title={`Show slide ${String(nextNo).padStart(2, "0")}'s screenshot instead`} onClick={() => setSlide({ img2: undefined })}><Link2 />Link</button>
+          </>)
+        : shotCard("img2", linked?.img, linked?.mock ?? 0, `Linked to slide ${String(nextNo).padStart(2, "0")}`, "Shows the next slide's screen — follows it when you change it", <>
+            <button className="primary sm" onClick={() => onReplace("img2")}><ImageUp />Use own image</button>
+          </>)}
+    </Group>
+    <Group id="s-dev2" title="Device 2">
+      <Prop label="Position">
+        <Num prefix="X" value={s.bx ?? 0} step={0.5} onChange={(bx) => setSlide({ bx }, "bx")} />
+        <Num prefix="Y" value={s.by ?? 0} step={0.5} onChange={(by) => setSlide({ by }, "by")} />
+      </Prop>
+      <Slider label="Extra spin" value={s.brz ?? 6} min={-30} max={30} unit="°" onChange={(brz) => setSlide({ brz }, "brz")} />
+      <p className="hint">Size and 3D tilt are shared with Device — select Device to change them.</p>
+      <button className="ghost sm wide" onClick={() => onPickLayer("device")}><Smartphone />Edit Device</button>
+    </Group>
+  </>;
   else body = <>
     <LayerList onPick={onPickLayer} onToggle={onToggleHidden} onAdd={onAddMenu}
-      rows={layersOf(s, p.loc).map((l) => ({ ...l, hidden: isHidden(s, l.id) }))} />
+      rows={layersOf(s, p.loc, nextNo).map((l) => ({ ...l, hidden: isHidden(s, l.id) }))} />
     <Group id="s-layout" title="Layout" right={<ApplyAll onClick={() => applyAll({ layout: s.layout }, "Layout")} />}>
       <div className="layouts">
         {LAYOUTS.map((l) => (

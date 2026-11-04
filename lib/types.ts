@@ -27,7 +27,11 @@ export interface Slide extends Tilt3D {
   t: Record<string, [string, string]>; // locale -> [tiêu đề, phụ đề]
   layout: Layout;
   scale: number; // bề ngang máy, % bề ngang slide
-  img: string | null; // dataURL ảnh chụp; null = dùng màn mẫu
+  img: string | null; // "img:<id>" trong kho ảnh (lib/images.ts) hoặc dataURL cũ; null = dùng màn mẫu
+  // Căn ảnh trong màn hình máy: fit = cover (Fill) / contain (Fit); ix,iy = dời ảnh (% cỡ màn); iz = phóng (1..3)
+  fit?: "fill" | "fit"; ix?: number; iy?: number; iz?: number;
+  // Máy thứ 2 (layout Duo): img2 = ảnh riêng (thiếu = lấy ảnh slide kế tiếp), bx,by = dời (em), brz = nghiêng thêm so với rz (mặc định 6)
+  img2?: string | null; bx?: number; by?: number; brz?: number;
   mock: number; // số màn mẫu khi chưa có ảnh
   // Dời vị trí khi kéo trên canvas (em = % bề ngang slide); thiếu = 0 (dự án cũ)
   dx?: number; dy?: number; // máy
@@ -35,7 +39,7 @@ export interface Slide extends Tilt3D {
   sx?: number; sy?: number; // phụ đề (Subtitle)
   extras?: TextItem[]; // layer chữ tự do
   front?: "text" | "device"; // phần nào nằm trên (mặc định chữ trên máy)
-  hidden?: { title?: boolean; sub?: boolean; device?: boolean; text?: boolean }; // ẩn layer (cả lúc xuất); text = bản cũ, tự chuyển khi nạp
+  hidden?: { title?: boolean; sub?: boolean; device?: boolean; device2?: boolean; text?: boolean }; // ẩn layer (cả lúc xuất); text = bản cũ, tự chuyển khi nạp
   override?: Partial<Theme>; // style riêng của slide này, đè lên Project style
   tw?: number; // bề ngang khối chữ (% slide); thiếu = theo layout
 }

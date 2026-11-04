@@ -12,11 +12,13 @@ import { Inspector } from "./Inspector";
 import { SizeDialog, ExportDialog, KeysDialog } from "./Dialogs";
 import type { CanvasPick, LayerPick } from "./SlideCanvas";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
-import { CopyPlus, Trash2, ImageUp, RotateCcw, BringToFront, SendToBack, Heading, Type, Pilcrow, Tag } from "lucide-react";
-import { isLayer, isText, posOf, withPos, toggleHidden as toggleH, removeLayer, layerName, canAdd, type LayerId } from "@/lib/layers";
+import { putImage } from "@/lib/images";
+import { Crop, CopyPlus, Trash2, ImageUp, RotateCcw, BringToFront, SendToBack, Heading, Type, Pilcrow, Tag } from "lucide-react";
+import { isLayer, isText, isDevice, posOf, withPos, toggleHidden as toggleH, removeLayer, layerName, canAdd, type LayerId } from "@/lib/layers";
 import { currentSize, themeOf, textOf } from "@/lib/rules";
 
-const readImg = (f: File) => new Promise<string>((r) => { const fr = new FileReader(); fr.onload = () => r(fr.result as string); fr.readAsDataURL(f); });
+// Ảnh tải lên → kho ảnh (thu nhỏ nếu >4000px), trả "img:<id>"; file hỏng thì bỏ qua
+const readImg = (f: File) => putImage(f).catch(() => null);
 
 export default function Editor() {
   const { p, update, undo, redo, canUndo, canRedo, save, fresh } = useProject();
@@ -31,6 +33,8 @@ export default function Editor() {
   const [narrowOk, setNarrowOk] = useState(false); // màn hẹp: user bấm "vẫn mở" 
   const [pick, setPick] = useState<CanvasPick>(null); // cấp đang chọn: null / slide / text / device
   const [hov, setHov] = useState<LayerPick | null>(null); // layer đang rê trên cây Layers
+  const [crop, setCrop] = useState<LayerId | null>(null); // máy đang ở chế độ căn ảnh (double-click máy)
+  useEffect(() => { if (crop && pick !== crop) setCrop(null); }, [pick, crop]); // chọn thứ khác → thoát căn ảnh
   const [menu, setMenu] = useState<{ x: number; y: number; i: number; target: CanvasPick } | null>(null); // menu chuột phải (i = -1: feature)
   const addInput = useRef<HTMLInputElement>(null);
   const replaceInput = useRef<HTMLInputElement>(null);
@@ -106,7 +110,7 @@ export default function Editor() {
       if (e.key === "?" && !dialog) { e.preventDefault(); setDialog("keys"); return; }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "d") { e.preventDefault(); if (tab === "slide") dupAt(idx); return; }
       // Esc lùi 1 cấp: layer → slide → không chọn (đang gõ chữ thì ô chữ tự xử lý Esc)
-      if (e.key === "Escape") return setPick((x) => (isLayer(x) ? "slide" : null));
+      if (e.key === "Escape") { if (crop) return setCrop(null); return setPick((x) => (isLayer(x) ? "slide" : null)); }
       // Delete / Backspace: xoá layer chữ đang chọn
       if ((e.key === "Delete" || e.key === "Backspace") && tab === "slide" && isText(isLayer(pick) ? pick : null)) { e.preventDefault(); removeAt(idx, pick as LayerId); return; }
       const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
@@ -145,8 +149,8 @@ export default function Editor() {
     if (!it) return [];
     const patch = (x: Record<string, unknown>) => (isF ? patchFeature(x) : update((d) => ({ ...d, slides: d.slides.map((s, j) => (j === m.i ? { ...s, ...x } : s)) })));
     const front = it.front ?? "text";
-    const tg = isLayer(m.target) ? m.target : null, grp = tg === "device" ? "device" : "text";
-    const name = tg === "device" ? (isF ? "devices" : "device") : "text";
+    const tg = isLayer(m.target) ? m.target : null, grp = isDevice(tg) ? "device" : "text";
+    const name = isDevice(tg) ? (isF ? "devices" : "device") : "text";
     const items: MenuItem[] = [];
     if (tg) items.push(
       { label: `Bring ${name} to front`, icon: <BringToFront />, disabled: front === grp, onClick: () => patch({ front: grp }) },
@@ -157,12 +161,13 @@ export default function Editor() {
     const sl = it as Slide;
     const moved = tg ? !tg.startsWith("x:") && posOf(it, tg).some(Boolean) : !!(it.dx || it.dy || it.tx || it.ty || (!isF && (sl.sx || sl.sy)));
     items.push({ label: "Reset position", icon: <RotateCcw />, disabled: !moved, onClick: () => patch(tg ? withPos(it, tg, 0, 0) : { dx: 0, dy: 0, tx: 0, ty: 0, sx: 0, sy: 0 }) });
-    if (!isF && tg && tg !== "device") items.push({ label: `Delete ${layerName(sl, tg).toLowerCase()}`, icon: <Trash2 />, kbd: "Del", danger: true, onClick: () => removeAt(m.i, tg) });
+    if (!isF && tg === "device" && sl.img) items.push({ label: crop === "device" ? "Done adjusting image" : "Adjust image…", icon: <Crop />, kbd: "Dbl-click", onClick: () => setCrop(crop === "device" ? null : "device") });
+    if (!isF && tg && !isDevice(tg)) items.push({ label: `Delete ${layerName(sl, tg).toLowerCase()}`, icon: <Trash2 />, kbd: "Del", danger: true, onClick: () => removeAt(m.i, tg) });
     if (!isF && !tg) items.push("sep", ...addItems(m.i).map((x) => (x === "sep" ? x : { ...x, label: `Add ${x.label.toLowerCase()}` })));
     if (!isF) items.push(
       "sep",
       { label: "Duplicate slide", icon: <CopyPlus />, kbd: "Ctrl D", onClick: () => dupAt(m.i) },
-      { label: (it as Slide).img ? "Replace screenshot…" : "Upload screenshot…", icon: <ImageUp />, onClick: () => { setSel(m.i); replaceInput.current?.click(); } },
+      { label: (it as Slide).img ? "Replace screenshot…" : "Upload screenshot…", icon: <ImageUp />, onClick: () => { setSel(m.i); pickFile("img"); } },
       "sep",
       { label: "Delete slide", icon: <Trash2 />, danger: true, disabled: n <= 1, onClick: () => delAt(m.i) },
     );
@@ -170,7 +175,7 @@ export default function Editor() {
   };
 
   const addFiles = async (files: FileList) => {
-    const imgs = await Promise.all([...files].filter((f) => f.type.startsWith("image/")).map(readImg));
+    const imgs = (await Promise.all([...files].filter((f) => f.type.startsWith("image/")).map(readImg))).filter((x): x is string => !!x);
     if (!imgs.length) return;
     setWelcome(false);
     setTab("slide");
@@ -191,13 +196,17 @@ export default function Editor() {
     flash(`Added ${added.length} slide${added.length > 1 ? "s" : ""}`, true);
   };
 
-  const replace = async (f?: File) => {
+  // Thay ảnh của slide đang chọn: k = "img" (máy chính) hoặc "img2" (máy 2 của Duo); ảnh mới thì về vị trí/zoom mặc định
+  const target = useRef<"img" | "img2">("img");
+  const replace = async (f?: File, k: "img" | "img2" = target.current) => {
     if (!f) return;
     const img = await readImg(f);
-    update((d) => ({ ...d, slides: d.slides.map((s, i) => (i === idx ? { ...s, img } : s)) }));
+    if (!img) return flash("Couldn't read that image");
+    update((d) => ({ ...d, slides: d.slides.map((s, i) => (i === idx ? { ...s, [k]: img, ...(k === "img" ? { ix: 0, iy: 0, iz: 1 } : {}) } : s)) }));
   };
+  const pickFile = (k: "img" | "img2" = "img") => { target.current = k; replaceInput.current?.click(); };
   // Đổi ảnh slide bất kỳ: chọn slide đó rồi mở hộp chọn file
-  const replaceAt = (i: number) => { setSel(i); setTab("slide"); replaceInput.current?.click(); };
+  const replaceAt = (i: number) => { setSel(i); setTab("slide"); pickFile("img"); };
 
   const addSize = (z: SizePreset) => {
     update((d) => ({ ...d, customSizes: [...d.customSizes, z], store: z.store, sizeId: z.id }));
@@ -233,12 +242,13 @@ export default function Editor() {
           welcome={welcome && fresh && allSample} onUpload={() => addInput.current?.click()} onSkipWelcome={() => setWelcome(false)}
           onPick={(i) => { setSel(i); setTab("slide"); }}
           onNav={(d) => { setTab("slide"); setSel((idx + d + n) % n); }}
-          edit={{ sel: pick, hover: hov, onSel: setPick, onPatch: patchCur }}
+          edit={{ sel: pick, hover: hov, onSel: setPick, onPatch: patchCur, crop, onCrop: setCrop }}
           onMenu={(x, y, i, target) => setMenu({ x, y, i, target })} />
         <Inspector p={p} sel={idx} tab={tab} update={update} pick={pick}
           onPickLayer={setPick} onToggleHidden={(l) => toggleHidden(idx, l)}
           onRemoveLayer={(l) => removeAt(idx, l)} onAddMenu={(x, y) => setAddMenu({ x, y, i: idx })}
-          onReplace={() => replaceInput.current?.click()} onReplaceFile={replace} onFlash={flash}
+          crop={crop} onCrop={(l) => { if (l) setPick(l); setCrop(l); }}
+          onReplace={pickFile} onReplaceFile={(f, k) => replace(f, k)} onFlash={flash}
           onDuplicate={() => dupAt(idx)} />
       </div>
       <input ref={addInput} type="file" accept="image/*" multiple hidden onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />

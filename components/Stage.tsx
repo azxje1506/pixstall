@@ -214,7 +214,7 @@ export function Stage({ p, sel, tab, view, onPick, onNav, onFiles, edit, welcome
             </div>
           )}
         </div>
-        <span className="tip"><MousePointer2 />{edit.sel ? "Drag to move · corners resize · ◯ rotates · Esc deselect" : "Click to edit · right-click for more · Space+drag to pan"}</span>
+        <span className="tip"><MousePointer2 />{edit.crop ? "Adjusting image: drag inside the screen · Esc to finish" : edit.sel && edit.sel !== "slide" ? "Drag to move · corners resize · ◯ rotates · double-click device to adjust image" : "Click to edit · right-click for more · Space+drag to pan"}</span>
         <div className="nav">
           <button className="ibtn" title="Previous" aria-label="Previous slide" onClick={() => onNav(-1)}><ChevronLeft /></button>
           <span className="mono">{feature ? "Feature graphic" : `slide ${sel + 1} / ${p.slides.length}`}</span>

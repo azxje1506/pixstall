@@ -1,10 +1,20 @@
 // Hook trạng thái dự án: undo/redo (gộp các thay đổi liên tiếp cùng nhãn, vd kéo slider) + tự lưu IndexedDB
+// Ảnh không nằm trong JSON dự án mà ở kho ảnh riêng (lib/images.ts), dự án chỉ giữ "img:<id>"
 // `save` = trạng thái lưu cho thanh trên: loading → saved / saving / error
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Project } from "./types";
 import { sampleProject, DEFAULT_THEME } from "./presets";
 import { loadProject, saveProject, askPersist } from "./storage";
+import { putImage, loadImages, gcImages } from "./images";
+
+// Mọi tham chiếu ảnh trong dự án (để nạp bộ đệm và dọn ảnh thừa)
+export const refsOf = (p: Project) => p.slides.flatMap((s) => [s.img, s.img2]).filter((x): x is string => !!x);
+// Dự án cũ lưu ảnh dạng dataURL ngay trong JSON → chuyển vào kho ảnh, thay bằng "img:<id>"
+async function moveImages(p: Project): Promise<Project> {
+  const conv = async (v?: string | null) => (v && v.startsWith("data:") ? putImage(v).catch(() => v) : v);
+  return { ...p, slides: await Promise.all(p.slides.map(async (s) => ({ ...s, img: (await conv(s.img)) ?? null, img2: await conv(s.img2) }))) };
+}
 
 const MAX = 60;
 
@@ -31,9 +41,14 @@ export function useProject() {
 
   // Nạp bản đã lưu (chạy 1 lần phía client)
   useEffect(() => {
-    loadProject().then((got) => {
-      // Dự án cũ thiếu trường theme mới → bù bằng DEFAULT_THEME
-      if (got) setP(migrate({ ...sampleProject(), ...got, theme: { ...DEFAULT_THEME, ...got.theme } })); else setFresh(true);
+    loadProject().then(async (got) => {
+      // Dự án cũ thiếu trường theme mới → bù bằng DEFAULT_THEME; ảnh dataURL → kho ảnh; nạp bộ đệm rồi mới vẽ
+      if (got) {
+        const proj = await moveImages(migrate({ ...sampleProject(), ...got, theme: { ...DEFAULT_THEME, ...got.theme } }));
+        await loadImages(refsOf(proj));
+        gcImages(refsOf(proj));
+        setP(proj);
+      } else setFresh(true);
       loaded.current = true;
       setSave("saved");
       askPersist();
