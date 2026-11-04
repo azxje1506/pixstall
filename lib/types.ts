@@ -28,6 +28,7 @@ export interface Slide extends Tilt3D {
   layout: Layout;
   scale: number; // bề ngang máy, % bề ngang slide
   img: string | null; // "img:<id>" trong kho ảnh (lib/images.ts) hoặc dataURL cũ; null = dùng màn mẫu
+  imgs?: Record<string, string>; // ảnh riêng theo ngôn ngữ (locale -> img ref), đè lên img khi xem/xuất ngôn ngữ đó
   // Căn ảnh trong màn hình máy: fit = cover (Fill) / contain (Fit); ix,iy = dời ảnh (% cỡ màn); iz = phóng (1..3)
   fit?: "fill" | "fit"; ix?: number; iy?: number; iz?: number;
   // Máy thứ 2 (layout Duo): img2 = ảnh riêng (thiếu = lấy ảnh slide kế tiếp), bx,by = dời (em), brz = nghiêng thêm so với rz (mặc định 6)
@@ -96,6 +97,9 @@ export interface Feature extends Tilt3D {
   dx?: number; dy?: number; // dời cụm máy (em)
   tx?: number; ty?: number; // dời khối icon + chữ (em)
   front?: "text" | "device";
+  iconImg?: string; // icon app thật (img ref); có thì thay icon Lucide
+  layout?: "split" | "center" | "phones"; // chữ trái + máy phải · chữ giữa + 2 máy 2 bên · chỉ 3 máy
+  shots?: string[]; // id slide cho từng máy (thiếu = slide theo thứ tự)
 }
 
 export interface Project {

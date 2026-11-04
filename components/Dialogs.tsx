@@ -4,7 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { Ruler, Trash, FileArchive, Download, TriangleAlert, LoaderCircle, Plus, Keyboard, X, Check } from "lucide-react";
 import type { Kind, Project, SizePreset, Store } from "@/lib/types";
 import { LOCALES, uid } from "@/lib/presets";
-import { allSizes, sizeWarnings } from "@/lib/rules";
+import { allSizes, sizeWarnings, usedLocales } from "@/lib/rules";
 import { SlideCanvas, FeatureCanvas } from "./SlideCanvas";
 import { exportZip, planFiles, download } from "@/lib/exporter";
 import { Modal, Seg } from "./ui";
@@ -52,7 +52,7 @@ const readPrefs = (): Partial<Prefs> => { try { return JSON.parse(localStorage.g
 export function ExportDialog({ p, onClose, onDone }: { p: Project; onClose: () => void; onDone: (n: number) => void }) {
   const sizes = allSizes(p);
   const saved = useMemo(readPrefs, []);
-  const usedLocs = useMemo(() => Object.keys(LOCALES).filter((l) => l === "en" || p.slides.some((s) => s.t[l])), [p.slides]);
+  const usedLocs = useMemo(() => Object.keys(LOCALES).filter((l) => usedLocales(p).includes(l)), [p]); // eslint-disable-line react-hooks/exhaustive-deps
   const [picked, setPicked] = useState<string[]>(() => {
     const ok = saved.picked?.filter((id) => sizes.some((z) => z.id === id));
     return ok?.length ? ok : sizes.filter((z) => z.store === p.store && (z.custom || ["ip69", "ipad13", "ph", "tab10"].includes(z.id))).map((z) => z.id);

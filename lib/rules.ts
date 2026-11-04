@@ -11,6 +11,15 @@ export const currentSize = (p: Project): SizePreset =>
 export const resolveFrame = (f: FrameStyle, store: Store): Exclude<FrameStyle, "auto"> =>
   f === "auto" ? (store === "ios" ? "iphone" : "pixel") : f;
 
+// Ảnh hiển thị của slide theo ngôn ngữ: ảnh riêng của ngôn ngữ đó, không có thì ảnh chung
+export const imgFor = (s: Slide | undefined, loc: string) => (s ? s.imgs?.[loc] ?? s.img : null);
+// Ngôn ngữ đang được dùng trong dự án (có chữ hoặc có ảnh riêng); luôn có "en"
+export const usedLocales = (p: Project) => {
+  const set = new Set(["en"]);
+  for (const s of p.slides) { Object.keys(s.t).forEach((l) => set.add(l)); Object.keys(s.imgs ?? {}).forEach((l) => set.add(l)); for (const x of s.extras ?? []) Object.keys(x.t).forEach((l) => set.add(l)); }
+  return [...set];
+};
+
 // Style thực tế của một slide = Project style + phần slide đè lên
 export const themeOf = (p: Project, s?: Slide): Theme => (s?.override ? { ...p.theme, ...s.override } : p.theme);
 // Tách "Build habits that *stick*" → [["Build habits that ", false], ["stick", true]] để tô màu từ nhấn

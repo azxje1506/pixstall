@@ -14,7 +14,7 @@ import { Highlighter } from "lucide-react";
 import { FEATURE_ICONS } from "./icons";
 import type { Project, SizePreset, Theme } from "@/lib/types";
 import { FONTS, FEATURE_SIZE } from "@/lib/presets";
-import { textOf, themeOf, richParts } from "@/lib/rules";
+import { textOf, themeOf, richParts, imgFor } from "@/lib/rules";
 import { posOf, withPos, patchExtra, extraText, isDevice, isLayer, type LayerId } from "@/lib/layers";
 import { imgSrc, imgMeta } from "@/lib/images";
 import type { Slide } from "@/lib/types";
@@ -354,8 +354,8 @@ function Shot({ img, mock, c, thumb, sr }: { img?: string | null; mock: number; 
 }
 // Tỉ lệ rộng/cao của màn trong máy (trừ viền) theo loại máy + theme
 export const screenRatio = (kind: "phone" | "tablet", t: Theme) => { const bz = t.frame === "none" ? 0 : t.bezel / 100; return (1 - 2 * bz) / (ASPECT[kind] - 2 * bz); };
-// Ảnh của slide i (máy chính, kèm cách căn của slide đó)
-const screenOf = (p: Project, i: number, sr: number, thumb?: boolean) => { const s = p.slides[i]; return s ? <Shot img={s.img} mock={s.mock} c={s} thumb={thumb} sr={sr} /> : null; };
+// Ảnh của slide i theo ngôn ngữ loc (máy chính, kèm cách căn của slide đó)
+const screenOf = (p: Project, i: number, sr: number, thumb: boolean | undefined, loc: string) => { const s = p.slides[i]; return s ? <Shot img={imgFor(s, loc)} mock={s.mock} c={s} thumb={thumb} sr={sr} /> : null; };
 
 export function SlideCanvas({ p, index, width, size, loc, edit }: { p: Project; index: number; width: number; size: SizePreset; loc?: string; edit?: CanvasEdit }) {
   const s = p.slides[index], t = themeOf(p, s), n = p.slides.length;
@@ -373,7 +373,7 @@ export function SlideCanvas({ p, index, width, size, loc, edit }: { p: Project; 
       ? { scale: { v: s.scale, min: 40, max: 100, mul: 1 / 0.66 }, rot: { v: s.brz ?? 6, key: "brz" } }
       : { scale: { v: s.scale, min: 40, max: 100, mul: duo ? 1 / 0.66 : centered ? 2 : 1 }, rot: { v: s.rz, key: "rz" } },
     size.w / 100,
-    (l) => (s && l === "device" && s.img ? [s.ix ?? 0, s.iy ?? 0, ...panRange(s.img, s, screenRatio(size.kind, t))] as [number, number, number, number] : null));
+    (l) => { const im = imgFor(s, L); return s && l === "device" && im ? [s.ix ?? 0, s.iy ?? 0, ...panRange(im, s, screenRatio(size.kind, t))] as [number, number, number, number] : null; });
   const titleRaw = s ? textOf(s, L)[0] : "";
   useLayoutEffect(() => {
     if (!edit) return;
@@ -404,26 +404,26 @@ export function SlideCanvas({ p, index, width, size, loc, edit }: { p: Project; 
   if (s.layout === "bottom") {
     block.bottom = `${padT}em`;
     const w = Math.min(s.scale, (hEm - 7 - textH - padT - 5) / asp);
-    devices = <Device {...dev} handle={hd("device")} w={w} x={(100 - w) / 2 + (s.dx ?? 0)} y={6 + (s.dy ?? 0)}>{screenOf(p, index, sr, th)}</Device>;
+    devices = <Device {...dev} handle={hd("device")} w={w} x={(100 - w) / 2 + (s.dx ?? 0)} y={6 + (s.dy ?? 0)}>{screenOf(p, index, sr, th, L)}</Device>;
   } else {
     block.top = `${padT}em`;
     const dx = s.dx ?? 0, dy = s.dy ?? 0;
     if (s.layout === "center") {
       const w = Math.min(s.scale, (hEm - below - 5) / asp);
-      devices = <Device {...dev} handle={hd("device")} w={w} x={(100 - w) / 2 + dx} y={below + dy}>{screenOf(p, index, sr, th)}</Device>;
+      devices = <Device {...dev} handle={hd("device")} w={w} x={(100 - w) / 2 + dx} y={below + dy}>{screenOf(p, index, sr, th, L)}</Device>;
     }
-    if (s.layout === "bleed") devices = <Device {...dev} handle={hd("device")} w={s.scale} x={(100 - s.scale) / 2 + dx} y={below + dy}>{screenOf(p, index, sr, th)}</Device>;
-    if (s.layout === "offset") devices = <Device {...dev} handle={hd("device")} w={s.scale} x={34 + dx} y={below - 2 + dy}>{screenOf(p, index, sr, th)}</Device>;
+    if (s.layout === "bleed") devices = <Device {...dev} handle={hd("device")} w={s.scale} x={(100 - s.scale) / 2 + dx} y={below + dy}>{screenOf(p, index, sr, th, L)}</Device>;
+    if (s.layout === "offset") devices = <Device {...dev} handle={hd("device")} w={s.scale} x={34 + dx} y={below - 2 + dy}>{screenOf(p, index, sr, th, L)}</Device>;
     if (s.layout === "duo") {
       const w = s.scale * 0.66;
       devices = (
         <>
           {!s.hidden?.device2 && (
             <Device {...dev} hit={hit("device2")} handle={hd("device2")} rz={s.rz + (s.brz ?? 6)} w={w} x={100 - 5 - w + (s.bx ?? 0)} y={below + 8 + (s.by ?? 0)} z={1}>
-              {s.img2 ? <Shot img={s.img2} mock={0} thumb={th} sr={sr} /> : screenOf(p, (index + 1) % n, sr, th)}
+              {s.img2 ? <Shot img={s.img2} mock={0} thumb={th} sr={sr} /> : screenOf(p, (index + 1) % n, sr, th, L)}
             </Device>
           )}
-          {!s.hidden?.device && <Device {...dev} handle={hd("device")} rz={s.rz - 4} w={w} x={5 + dx} y={below + dy}>{screenOf(p, index, sr, th)}</Device>}
+          {!s.hidden?.device && <Device {...dev} handle={hd("device")} rz={s.rz - 4} w={w} x={5 + dx} y={below + dy}>{screenOf(p, index, sr, th, L)}</Device>}
         </>
       );
     }
@@ -448,9 +448,9 @@ export function SlideCanvas({ p, index, width, size, loc, edit }: { p: Project; 
 
   return (
     <div data-cv ref={cv} {...kit.root} style={{ position: "relative", overflow: "hidden", width, height: (width * size.h) / size.w, fontSize: width / 100, ...background(t, index, hEm, n) }}>
-      {t.bg === "blur" && s.img && (
+      {t.bg === "blur" && imgFor(s, L) && (
         <>
-          <div style={{ position: "absolute", inset: "-10%", backgroundImage: `url(${imgSrc(s.img, th)})`, backgroundSize: "cover", backgroundPosition: "center", filter: `blur(${t.blur * 0.12}em)` }} />
+          <div style={{ position: "absolute", inset: "-10%", backgroundImage: `url(${imgSrc(imgFor(s, L), th)})`, backgroundSize: "cover", backgroundPosition: "center", filter: `blur(${t.blur * 0.12}em)` }} />
           <div style={{ position: "absolute", inset: 0, background: `rgba(0,0,0,${t.overlay / 100})` }} />
         </>
       )}
@@ -487,33 +487,64 @@ export function SlideCanvas({ p, index, width, size, loc, edit }: { p: Project; 
   );
 }
 
-// Feature Graphic Google Play: icon + tên + câu giới thiệu (layer "title") + cụm 2 máy 3D (layer "device")
-export function FeatureCanvas({ p, width, edit }: { p: Project; width: number; edit?: CanvasEdit }) {
-  const f = p.feature, t = p.theme, k = width / 100;
-  const hEm = (100 * FEATURE_SIZE.h) / FEATURE_SIZE.w;
+// Feature Graphic Google Play (1024×500). Layer "title" = icon + tên + tagline, layer "device" = cụm máy. 3 bố cục:
+//   split  = chữ trái, 2 máy phải (mặc định) · center = chữ giữa, 2 máy 2 bên nghiêng vào trong · phones = chỉ 3 máy xoè giữa
+// Icon: ảnh thật (iconImg) hoặc icon Lucide. Máy j lấy ảnh slide có id shots[j] (thiếu = slide thứ j), theo ngôn ngữ đang xem
+// Khung bọc cụm máy không bắt chuột (pointer-events none), chỉ các máy bắt → bấm chỗ trống giữa 2 máy vẫn chọn được nền/chữ
+export const featureShot = (p: Project, j: number) => {
+  const id = p.feature.shots?.[j], i = id ? p.slides.findIndex((s) => s.id === id) : -1;
+  return i >= 0 ? i : Math.min(j, p.slides.length - 1);
+};
+
+export function FeatureCanvas({ p, width, edit, loc }: { p: Project; width: number; edit?: CanvasEdit; loc?: string }) {
+  const f = p.feature, t = p.theme, k = width / 100, L = loc ?? p.loc;
+  const hEm = (100 * FEATURE_SIZE.h) / FEATURE_SIZE.w, lay = f.layout ?? "split";
   const kit = useEditKit(edit, k, hEm, (l) => posOf(f, l), (l, x, y) => edit?.onPatch(withPos(f, l, x, y), "drag-" + l),
     () => ({ scale: { v: f.scale, min: 12, max: 30, mul: 1 }, rot: { v: f.rz, key: "rz" } }), FEATURE_SIZE.w / 100);
   const th = width < 240, sr = screenRatio("phone", t);
   const ink = t.tcolor || (t.ink === "light" ? "#fff" : "#15151A");
   const Icon = FEATURE_ICONS[f.icon] ?? FEATURE_ICONS.sprout;
-  const dw = f.scale, dx = f.dx ?? 0, dy = f.dy ?? 0, dev = { kind: "phone" as const, store: "play" as const, theme: t, rx: f.rx, ry: f.ry, rz: f.rz };
-  const y0 = (hEm - dw * ASPECT.phone) / 2;
+  const dw = f.scale, dx = f.dx ?? 0, dy = f.dy ?? 0, dh = dw * ASPECT.phone;
+  const dev = { kind: "phone" as const, store: "play" as const, theme: t, rx: f.rx, ry: f.ry, rz: f.rz, hit: { style: { pointerEvents: "auto" as const } } };
   const FN = kit.lineOf("fn", f.name, t.hl, (name) => edit?.onPatch({ name }, ""));
   const FT = kit.lineOf("ft", f.tagline, t.hl, (tagline) => edit?.onPatch({ tagline }, ""));
+  const center = lay === "center";
+  const phone = (j: number, x: number, y: number, extra: Partial<typeof dev> & { z?: number } = {}) => (
+    <Device key={j} {...dev} {...extra} w={dw} x={x} y={y}>{screenOf(p, featureShot(p, j), sr, th, L)}</Device>
+  );
+
+  // Khung + vị trí các máy theo bố cục (em, so với khung bọc)
+  let box: CSSProperties, phones: ReactNode;
+  if (lay === "center") {
+    box = { left: `${4 + dx}em`, top: `${(hEm - dh) / 2 + 6 + dy}em`, width: "92em", height: `${dh}em` };
+    phones = <>{phone(0, 0, 0, { ry: -f.ry, rz: -(f.rz + 6) })}{phone(1, 92 - dw, 0, { rz: f.rz + 6 })}</>;
+  } else if (lay === "phones") {
+    box = { left: `${50 - dw * 1.4 + dx}em`, top: `${(hEm - dh) / 2 - 1 + dy}em`, width: `${dw * 2.8}em`, height: `${dh + 6}em` };
+    phones = <>{phone(1, 0, 6, { rz: f.rz - 8, z: 1 })}{phone(2, dw * 1.8, 6, { rz: f.rz + 8, z: 1 })}{phone(0, dw * 0.9, 0, { z: 3 })}</>;
+  } else {
+    box = { left: `${100 - 6 - dw * 1.85 + dx}em`, top: `${(hEm - dh) / 2 - 1.5 + dy}em`, width: `${dw * 1.85}em`, height: `${dh + 4.5}em` };
+    phones = <>{phone(1, dw * 0.85, 0, { rz: f.rz + 4, z: 1 })}{phone(0, 0, 4.5)}</>;
+  }
+  const icon = (
+    <div style={{ width: "10em", height: "10em", borderRadius: "2.6em", background: "#fff", display: "grid", placeItems: "center", overflow: "hidden", boxShadow: "0 .8em 2.4em rgba(0,0,0,.16)", color: t.c1, margin: center ? "0 auto" : undefined }}>
+      {f.iconImg ? <img src={imgSrc(f.iconImg, th)} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : <Icon style={{ width: "5.4em", height: "5.4em" }} strokeWidth={2} />}
+    </div>
+  );
   return (
     <div data-cv {...kit.root} style={{ position: "relative", overflow: "hidden", width, height: (width * FEATURE_SIZE.h) / FEATURE_SIZE.w, fontSize: width / 100, ...background(t, 0, hEm, 1) }}>
-      <div {...kit.hit("title")} style={{ position: "absolute", left: "7em", top: "50%", transform: `translate(${f.tx ?? 0}em, calc(-50% + ${f.ty ?? 0}em))`, color: ink, fontFamily: FONTS[t.font], zIndex: f.front === "device" ? 0 : 3, width: "48em" }}>
-        <div style={{ width: "10em", height: "10em", borderRadius: "2.6em", background: "#fff", display: "grid", placeItems: "center", boxShadow: "0 .8em 2.4em rgba(0,0,0,.16)", color: t.c1 }}>
-          <Icon style={{ width: "5.4em", height: "5.4em" }} strokeWidth={2} />
+      {lay !== "phones" && (
+        <div {...kit.hit("title")} style={{ position: "absolute", top: "50%", color: ink, fontFamily: FONTS[t.font], zIndex: f.front === "device" ? 0 : 3,
+          ...(center
+            ? { left: "50%", width: "52em", textAlign: "center", transform: `translate(calc(-50% + ${f.tx ?? 0}em), calc(-50% + ${f.ty ?? 0}em))` }
+            : { left: "7em", width: "48em", transform: `translate(${f.tx ?? 0}em, calc(-50% + ${f.ty ?? 0}em))` }) }}>
+          {icon}
+          <h2 key={FN.key} {...FN.props} style={{ fontSize: center ? "6em" : "7em", margin: ".3em 0 0", fontWeight: 800, letterSpacing: "-.03em", lineHeight: 1 }}>{FN.children}</h2>
+          <p key={"t" + FT.key} {...FT.props} style={{ fontSize: "3em", margin: ".35em 0 0", opacity: 0.88, fontWeight: 500 }}>{FT.children}</p>
         </div>
-        <h2 key={FN.key} {...FN.props} style={{ fontSize: "7em", margin: ".3em 0 0", fontWeight: 800, letterSpacing: "-.03em", lineHeight: 1 }}>{FN.children}</h2>
-        <p key={"t" + FT.key} {...FT.props} style={{ fontSize: "3em", margin: ".35em 0 0", opacity: 0.88, fontWeight: 500 }}>{FT.children}</p>
-      </div>
+      )}
       {f.device && (
-        // Cụm máy bọc chung 1 khung để kéo cả cặp
-        <div {...kit.hit("device")} style={{ position: "absolute", left: `${100 - 6 - dw * 1.85 + dx}em`, top: `${y0 - 1.5 + dy}em`, width: `${dw * 1.85}em`, height: `${dw * ASPECT.phone + 4.5}em`, zIndex: 2 }}>
-          <Device {...dev} rz={f.rz + 4} w={dw} x={dw * 0.85} y={0} z={1}>{screenOf(p, 1, sr, th)}</Device>
-          <Device {...dev} w={dw} x={0} y={4.5}>{screenOf(p, 0, sr, th)}</Device>
+        <div {...kit.hit("device")} style={{ position: "absolute", zIndex: 2, pointerEvents: "none", ...box }}>
+          {phones}
           {kit.handle}
         </div>
       )}

@@ -76,7 +76,7 @@ export async function exportZip(p: Project, o: ExportOptions, onProgress: (done:
     }
     if (o.feature) {
       if (signal?.aborted) throw new Error("Cancelled");
-      flushSync(() => root.render(createElement(FeatureCanvas, { p, width: FEATURE_SIZE.w })));
+      flushSync(() => root.render(createElement(FeatureCanvas, { p, width: FEATURE_SIZE.w, loc: o.locales[0] ?? p.loc })));
       zip.file(files[k], await snap(FEATURE_SIZE.w, FEATURE_SIZE.h));
       onProgress(++k, files.length);
     }

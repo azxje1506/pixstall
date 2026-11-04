@@ -10,6 +10,7 @@ import { SlideList } from "./SlideList";
 import { Stage } from "./Stage";
 import { Inspector } from "./Inspector";
 import { SizeDialog, ExportDialog, KeysDialog } from "./Dialogs";
+import { TranslateDialog } from "./TranslateDialog";
 import type { CanvasPick, LayerPick } from "./SlideCanvas";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { putImage } from "@/lib/images";
@@ -26,7 +27,7 @@ export default function Editor() {
   const [tab, setTab] = useState<"slide" | "feature">("slide");
   const [view, setView] = useState<"strip" | "single">("strip");
   const [dark, setDark] = useState(false);
-  const [dialog, setDialog] = useState<"" | "size" | "export" | "keys">("");
+  const [dialog, setDialog] = useState<"" | "size" | "export" | "keys" | "tr">("");
   const [toast, setToast] = useState<{ msg: string; undo?: boolean } | null>(null);
   const toastT = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [welcome, setWelcome] = useState(true); // tắt sau khi user upload hoặc chọn xem mẫu
@@ -224,7 +225,7 @@ export default function Editor() {
           update((d) => ({ ...d, sizeId, store: st }));
           if (st === "ios") setTab("slide");
         }}
-        onName={(name) => update((d) => ({ ...d, name }))} onKeys={() => setDialog("keys")}
+        onName={(name) => update((d) => ({ ...d, name }))} onKeys={() => setDialog("keys")} onTranslate={() => setDialog("tr")}
         onLoc={(loc) => update((d) => ({ ...d, loc }))}
         onView={setView} onUndo={undo} onRedo={redo} onDark={() => setDark(!dark)}
         onExport={() => setDialog("export")} onAddSize={() => setDialog("size")} />
@@ -257,6 +258,7 @@ export default function Editor() {
         onRemove={(id) => update((d) => { const customSizes = d.customSizes.filter((z) => z.id !== id); return { ...d, customSizes, sizeId: d.sizeId === id ? sizesOf({ ...d, customSizes }, d.store)[0].id : d.sizeId }; })} />}
       {dialog === "export" && <ExportDialog p={p} onClose={() => setDialog("")} onDone={(k) => flash(`Exported ${k} files`)} />}
       {dialog === "keys" && <KeysDialog onClose={() => setDialog("")} />}
+      {dialog === "tr" && <TranslateDialog p={p} update={update} onFlash={flash} onClose={() => setDialog("")} />}
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems(menu)} onClose={() => setMenu(null)} />}
       {addMenu && <ContextMenu x={addMenu.x} y={addMenu.y} minWidth={168} items={addItems(addMenu.i)} onClose={() => setAddMenu(null)} />}
       {toast && (

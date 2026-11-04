@@ -8,19 +8,19 @@
 // Mọi thay đổi đi qua update(fn, tag) — tag gộp các lần kéo slider thành 1 bước undo
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ImageUp, CopyPlus, ImageOff, RotateCcw, Smartphone, EyeOff, Eye, TextAlignStart, TextAlignCenter, Sun, Moon, Type,
-  PanelBottom, ArrowDownToLine, Copy, MoveRight, CopyCheck, ChevronRight, Frame, Highlighter, Plus, Trash2, Crop, Link2, Image as ImageIcon } from "lucide-react";
+  PanelBottom, ArrowDownToLine, Copy, MoveRight, CopyCheck, ChevronRight, Frame, Highlighter, Plus, Trash2, Crop, Link2, Languages, Columns2, AlignCenter, GalleryHorizontalEnd, Image as ImageIcon } from "lucide-react";
 import type { Project, Slide, Theme, ThemeKey, Feature, Layout, Tilt3D, FrameStyle, FrameColor, Bg } from "@/lib/types";
 import { FONTS, FRAME_COLORS, GRADIENTS, TILT_PRESETS, DEFAULT_THEME, LOCALES } from "@/lib/presets";
-import { textOf, themeOf, plain, allSizes } from "@/lib/rules";
+import { textOf, themeOf, plain, allSizes, imgFor } from "@/lib/rules";
 import { mockScreen } from "@/lib/mocks";
 import { FEATURE_ICONS } from "./icons";
 import { Seg, Slider, Group, Num, Prop, Tabs } from "./ui";
 import { ColorField } from "./ColorField";
 import type { CanvasPick, LayerPick } from "./SlideCanvas";
 import { isLayer, isHidden, layersOf, layerName as nameOf, extraOf, extraText, patchExtra, type LayerId } from "@/lib/layers";
-import { imgSrc, imgMeta } from "@/lib/images";
+import { imgSrc, imgMeta, putImage } from "@/lib/images";
 import { ASPECT } from "./Device";
-import { panRange, screenRatio } from "./SlideCanvas";
+import { panRange, screenRatio, featureShot } from "./SlideCanvas";
 import { layerIcon } from "./SlideList";
 
 type Update = (fn: (d: Project) => Project, tag?: string) => void;
@@ -252,6 +252,14 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
   const [ptab, setPtab] = useState<PTab>("item");
   const [hot, setHot] = useState(false); // kéo file ngang thẻ Screenshot
   const ta = useRef<HTMLTextAreaElement>(null); // ô tiêu đề (để tô màu phần bôi đen)
+  // Ô chọn file dùng riêng trong panel (icon app, ảnh theo ngôn ngữ): đặt đích rồi mở hộp chọn
+  const fileIn = useRef<HTMLInputElement>(null), fileTo = useRef<(ref: string) => void>(() => {});
+  const pickTo = (fn: (ref: string) => void) => { fileTo.current = fn; fileIn.current?.click(); };
+  const filePicker = <input ref={fileIn} type="file" accept="image/*" hidden onChange={async (e) => {
+    const f = e.target.files?.[0]; e.target.value = ""; if (!f) return;
+    const ref = await putImage(f).catch(() => null);
+    if (ref) fileTo.current(ref); else onFlash("Couldn't read that image");
+  }} />;
   useEffect(() => { if (pick) setPtab("item"); }, [pick]); // chọn gì trên canvas → về tab thuộc tính
 
   const setTheme: SetTheme = (patch, tag) => update((d) => ({ ...d, theme: { ...d.theme, ...patch } }), tag);
@@ -317,7 +325,7 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
 
   // ===== Feature graphic =====
   if (isFeature) {
-    const f = p.feature;
+    const f = p.feature, flay = f.layout ?? "split", phoneCount = flay === "phones" ? 3 : 2;
     const moved = layer === "title" ? !!(f.tx || f.ty) : !!(f.dx || f.dy);
     const reset = layer && moved ? <button className="gbtn" title="Reset position" onClick={() => setFeature(layer === "title" ? { tx: 0, ty: 0 } : { dx: 0, dy: 0 })}><RotateCcw />Reset</button> : null;
     let body: ReactNode;
@@ -329,30 +337,63 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
           <Num prefix="X" value={f.tx ?? 0} step={0.5} onChange={(tx) => setFeature({ tx }, "ftx")} />
           <Num prefix="Y" value={f.ty ?? 0} step={0.5} onChange={(ty) => setFeature({ ty }, "fty")} />
         </Prop>
-        <span className="sublab">Icon</span>
-        <div className="icons">
+      </Group>
+      {/* Icon app: ảnh thật (khuyên dùng, 512×512) hoặc icon có sẵn */}
+      <Group id="f-icon" title="App icon">
+        <div className="iconrow">
+          <span className="iconprev">{f.iconImg ? <img src={imgSrc(f.iconImg, true)} alt="" /> : (() => { const I = FEATURE_ICONS[f.icon] ?? FEATURE_ICONS.sprout; return <I />; })()}</span>
+          <span className="shot-meta">
+            <span className="shot-t">{f.iconImg ? "Your app icon" : "Placeholder icon"}</span>
+            <span className="hint">PNG, square, 512×512 works best</span>
+            <span className="row g4">
+              <button className="primary sm" onClick={() => pickTo((iconImg) => setFeature({ iconImg }))}><ImageUp />{f.iconImg ? "Replace" : "Upload icon"}</button>
+              {f.iconImg && <button className="ghost sm" title="Remove icon image" aria-label="Remove icon image" onClick={() => setFeature({ iconImg: undefined })}><ImageOff /></button>}
+            </span>
+          </span>
+        </div>
+        {!f.iconImg && <div className="icons">
           {Object.entries(FEATURE_ICONS).map(([k, I]) => (
             <button key={k} title={k} aria-label={`Icon ${k}`} className={f.icon === k ? "on" : ""} onClick={() => setFeature({ icon: k })}><I /></button>
           ))}
-        </div>
+        </div>}
       </Group>
       <TypeGroup sc={project} />
     </>;
     else if (layer === "device") body = <>
+      {/* Mỗi máy chọn ảnh của 1 slide (lưu id slide → kéo đổi thứ tự slide vẫn đúng) */}
+      <Group id="f-shots" title="Screens">
+        {Array.from({ length: phoneCount }, (_, j) => (
+          <Prop key={j} label={`Phone ${j + 1}`}>
+            <label className="chip">
+              <select value={p.slides[featureShot(p, j)]?.id} aria-label={`Screen of phone ${j + 1}`} onChange={(e) => {
+                const ids = Array.from({ length: phoneCount }, (_, q) => p.slides[featureShot(p, q)]?.id ?? "");
+                ids[j] = e.target.value; setFeature({ shots: ids });
+              }}>
+                {p.slides.map((x, i) => <option key={x.id} value={x.id}>Slide {String(i + 1).padStart(2, "0")} · {plain(textOf(x, p.loc)[0]) || "Untitled"}</option>)}
+              </select>
+            </label>
+          </Prop>
+        ))}
+      </Group>
       <DeviceControls label="Devices" v={f} scaleRange={[12, 30]} tag="f" onChange={(patch, tg) => setFeature(patch, tg)} />
       <FrameGroup sc={project} />
     </>;
     else body = <>
       <LayerList onPick={onPickLayer} rows={[
-        { id: "title", name: "Text & icon", sub: f.name || "—" },
-        { id: "device", name: "Devices", sub: f.device ? "2 phones" : "hidden", hidden: !f.device },
+        ...(flay !== "phones" ? [{ id: "title" as LayerId, name: "Text & icon", sub: f.name || "—" }] : []),
+        { id: "device", name: "Devices", sub: f.device ? `${phoneCount} phones` : "hidden", hidden: !f.device },
       ]} onToggle={(l) => l === "device" && setFeature({ device: !f.device })} />
-      <Group title="Feature graphic" right={<span className="mono">1024×500</span>}>
+      <Group id="f-layout" title="Layout" right={<span className="mono">1024×500</span>}>
+        <div className="layouts three">
+          {([["split", "Text left", <Columns2 key="a" />], ["center", "Centered", <AlignCenter key="b" />], ["phones", "Phones", <GalleryHorizontalEnd key="c" />]] as const).map(([v, label, ic]) => (
+            <button key={v} className={flay === v ? "on" : ""} onClick={() => setFeature({ layout: v, dx: 0, dy: 0, tx: 0, ty: 0, ...(v !== "split" && !f.device ? { device: true } : {}) })}>{ic}{label}</button>
+          ))}
+        </div>
         <p className="hint">The banner on top of your Google Play listing. Click the text or the phones on the canvas to edit them.</p>
       </Group>
       <BgGroup sc={project} />
     </>;
-    return <aside className="right">{head}{crumb(reset)}{body}</aside>;
+    return <aside className="right">{head}{crumb(reset)}{body}{filePicker}</aside>;
   }
 
   // ===== Slide =====
@@ -405,10 +446,11 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
     </div>
   );
 
-  const pr = panRange(s.img, s, screenRatio(currentKind, slideScope.t));
+  const shown = imgFor(s, p.loc), own = !!s.imgs?.[p.loc]; // ảnh đang hiện ở ngôn ngữ này / có ảnh riêng cho ngôn ngữ này không
+  const pr = panRange(shown, s, screenRatio(currentKind, slideScope.t));
   // Cảnh báo lệch tỉ lệ: tỉ lệ ảnh so với tỉ lệ màn (trừ viền máy) lệch >6% thì báo phần nào bị cắt
   const ratioNote = (() => {
-    const m = imgMeta(s.img); if (!m || s.fit === "fit") return null;
+    const m = imgMeta(shown); if (!m || s.fit === "fit") return null;
     const t = slideScope.t, bz = t.frame === "none" ? 0 : t.bezel / 100, kind = currentKind;
     const scr = (ASPECT[kind] - 2 * bz) / (1 - 2 * bz), img = m.h / m.w, d = img / scr - 1;
     if (Math.abs(d) < 0.06) return null;
@@ -469,14 +511,23 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
     </>;
   } else if (layer === "device") body = <>
     {hidNote}
-    <Group id="s-shot" title="Screenshot" right={s.img && <span className="mono">{imgMeta(s.img) ? `${imgMeta(s.img)!.w}×${imgMeta(s.img)!.h}` : ""}</span>}>
-      {shotCard("img", s.img, s.mock, s.img ? "Your screenshot" : "Sample screen", s.img ? "Drop a new image to replace" : "Replace it with your app's screen", <>
-        <button className="primary sm" onClick={() => onReplace("img")}><ImageUp />{s.img ? "Replace" : "Upload"}</button>
-        {s.img && <button className="ghost sm" title="Remove image" aria-label="Remove image" onClick={() => setSlide({ img: null })}><ImageOff /></button>}
-      </>)}
+    <Group id="s-shot" title="Screenshot" right={shown && <span className="mono">{imgMeta(shown) ? `${imgMeta(shown)!.w}×${imgMeta(shown)!.h}` : ""}</span>}>
+      {own
+        ? shotCard("img", shown, s.mock, `${LOCALES[p.loc]} screenshot`, `Only used for ${LOCALES[p.loc]}`, <>
+            <button className="primary sm" onClick={() => pickTo((ref) => setSlide({ imgs: { ...s.imgs, [p.loc]: ref } }))}><ImageUp />Replace</button>
+            <button className="ghost sm" title="Use the shared screenshot for this language" onClick={() => { const { [p.loc]: _, ...rest } = s.imgs ?? {}; void _; setSlide({ imgs: Object.keys(rest).length ? rest : undefined }); }}><Link2 />Use shared</button>
+          </>)
+        : shotCard("img", s.img, s.mock, s.img ? "Your screenshot" : "Sample screen", s.img ? (p.loc === "en" ? "Drop a new image to replace" : "Shared by all languages") : "Replace it with your app's screen", <>
+            <button className="primary sm" onClick={() => onReplace("img")}><ImageUp />{s.img ? "Replace" : "Upload"}</button>
+            {s.img && <button className="ghost sm" title="Remove image" aria-label="Remove image" onClick={() => setSlide({ img: null })}><ImageOff /></button>}
+          </>)}
+      {/* Ảnh riêng cho ngôn ngữ đang xem (vd app bản tiếng Việt) */}
+      {p.loc !== "en" && !own && (
+        <button className="gbtn" onClick={() => pickTo((ref) => setSlide({ imgs: { ...s.imgs, [p.loc]: ref } }))}><Languages />Use a different screenshot for {LOCALES[p.loc]}</button>
+      )}
     </Group>
     {/* Căn ảnh trong màn: Fill (cắt cho kín) / Fit (hiện trọn, viền đen), phóng to, dời */}
-    {s.img && (
+    {shown && (
       <Group id="s-img" title="Image in screen" right={(s.ix || s.iy || (s.iz ?? 1) !== 1 || s.fit === "fit") ? <button className="gbtn" onClick={() => setSlide({ ix: 0, iy: 0, iz: 1, fit: "fill" })}><RotateCcw />Reset</button> : undefined}>
         <Prop label="Mode">
           <Seg full value={s.fit ?? "fill"} onChange={(fit: "fill" | "fit") => setSlide({ fit })} options={[{ v: "fill", label: "Fill" }, { v: "fit", label: "Fit" }]} />
@@ -535,5 +586,5 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
     <BgGroup sc={slideScope} />
   </>;
 
-  return <aside className="right">{head}{crumb(actions)}{body}</aside>;
+  return <aside className="right">{head}{crumb(actions)}{body}{filePicker}</aside>;
 }

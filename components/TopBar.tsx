@@ -27,6 +27,7 @@ interface Props {
   onAddSize: () => void;
   onName: (v: string) => void;
   onKeys: () => void; // mở bảng phím tắt
+  onTranslate: () => void; // mở bảng dịch
 }
 
 // Popover Target: 2 cột App Store / Google Play, mỗi cột liệt kê cỡ preset + cỡ tự thêm; chọn 1 cỡ = đổi luôn store
@@ -102,8 +103,9 @@ export function TopBar(x: Props) {
         </div>
         <label className="chip">
           <Languages />
-          <select value={x.p.loc} aria-label="Language" onChange={(e) => x.onLoc(e.target.value)}>
+          <select value={x.p.loc} aria-label="Language" onChange={(e) => (e.target.value === "__tr" ? x.onTranslate() : x.onLoc(e.target.value))}>
             {Object.entries(LOCALES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            <option value="__tr">▦ Translations table…</option>
           </select>
         </label>
         <div className={x.viewLocked ? "locked" : ""} title={x.viewLocked ? "Feature graphic is a single image" : undefined}>

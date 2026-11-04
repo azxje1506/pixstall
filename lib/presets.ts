@@ -27,11 +27,13 @@ export const LOCALES: Record<string, string> = {
 };
 
 // Tên font -> biến CSS do next/font sinh ra (khai trong app/layout.tsx)
+// Sau font chính là font hệ thống cho chữ Nhật/Hàn/Trung (font Latin không có) → không rơi về font có chân mặc định
+const CJK = `"Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", "Apple SD Gothic Neo", "Malgun Gothic", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK JP", "Noto Sans JP", sans-serif`;
 export const FONTS: Record<string, string> = {
-  Inter: "var(--font-inter)",
-  "Plus Jakarta Sans": "var(--font-jakarta)",
-  "Space Grotesk": "var(--font-grotesk)",
-  "DM Serif Display": "var(--font-serif)",
+  Inter: `var(--font-inter), ${CJK}`,
+  "Plus Jakarta Sans": `var(--font-jakarta), ${CJK}`,
+  "Space Grotesk": `var(--font-grotesk), ${CJK}`,
+  "DM Serif Display": `var(--font-serif), "Hiragino Mincho ProN", "Yu Mincho", serif`,
 };
 
 // Màu thân máy: body = viền màn, edge = chỉ sáng mép, side = thân dày khi xoay 3D

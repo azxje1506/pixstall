@@ -9,7 +9,7 @@ import { loadProject, saveProject, askPersist } from "./storage";
 import { putImage, loadImages, gcImages } from "./images";
 
 // Mọi tham chiếu ảnh trong dự án (để nạp bộ đệm và dọn ảnh thừa)
-export const refsOf = (p: Project) => p.slides.flatMap((s) => [s.img, s.img2]).filter((x): x is string => !!x);
+export const refsOf = (p: Project) => [...p.slides.flatMap((s) => [s.img, s.img2, ...Object.values(s.imgs ?? {})]), p.feature.iconImg].filter((x): x is string => !!x);
 // Dự án cũ lưu ảnh dạng dataURL ngay trong JSON → chuyển vào kho ảnh, thay bằng "img:<id>"
 async function moveImages(p: Project): Promise<Project> {
   const conv = async (v?: string | null) => (v && v.startsWith("data:") ? putImage(v).catch(() => v) : v);
