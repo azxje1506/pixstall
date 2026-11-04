@@ -86,7 +86,7 @@ function FrameGroup({ sc }: { sc: Scope }) {
   const { t, set } = sc;
   return (
     <Group id="st-frame" title="Device frame" right={<ScopeBadge sc={sc} keys={FRAME_KEYS} />}>
-      <Prop label="Style" {...mk(sc, "frame")}>
+      <Prop stack label="Style" {...mk(sc, "frame")}>
         <Seg full value={t.frame} onChange={(frame: FrameStyle) => set({ frame })} options={[
           { v: "auto", label: "Auto" }, { v: "iphone", label: "iPhone" }, { v: "pixel", label: "Pixel" }, { v: "none", label: "None" },
         ]} />
@@ -112,9 +112,9 @@ function BgGroup({ sc }: { sc: Scope }) {
   const gOn = (a: string, b: string) => t.bg !== "color" && t.c1.toUpperCase() === a.toUpperCase() && t.c2.toUpperCase() === b.toUpperCase();
   return (
     <Group id="st-bg" title="Background" right={<ScopeBadge sc={sc} keys={BG_KEYS} />}>
-      <Prop label="Type" {...mk(sc, "bg")}>
+      <Prop stack label="Type" {...mk(sc, "bg")}>
         <Seg full value={t.bg} onChange={(bg: Bg) => set({ bg })} options={[
-          { v: "color", label: "Color" }, { v: "gradient", label: "Gradient" }, { v: "panorama", label: "Pano" }, { v: "blur", label: "Blur" },
+          { v: "color", label: "Color" }, { v: "gradient", label: "Gradient" }, { v: "panorama", label: "Panorama" }, { v: "blur", label: "Blur" },
         ]} />
       </Prop>
       <p className="hint">{BG_HINT[t.bg]}</p>
@@ -160,7 +160,7 @@ function TypeGroup({ sc }: { sc: Scope }) {
           { v: "left", icon: <TextAlignStart />, title: "Left" }, { v: "center", icon: <TextAlignCenter />, title: "Center" },
         ]} />
       </Prop>
-      <Prop label="Color" {...mk(sc, "ink", "tcolor")}>
+      <Prop stack label="Color" {...mk(sc, "ink", "tcolor")}>
         <Seg full value={t.tcolor ? "custom" : t.ink} onChange={(v: string) => (v === "custom" ? set({ tcolor: inkHex === "#FFFFFF" ? "#FFF7E6" : "#1E1B4B" }) : set({ ink: v as Theme["ink"], tcolor: "" }))} options={[
           { v: "light", icon: <Sun />, title: "White" }, { v: "dark", icon: <Moon />, title: "Black" }, { v: "custom", label: "Custom" },
         ]} />

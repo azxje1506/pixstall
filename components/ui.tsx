@@ -2,6 +2,7 @@
 // Kích thước bám lưới 4px: hàng 28px, khoảng cách 8/12/16 — style nằm trong app/globals.css
 // - Prop có `scrub` → kéo ngang trên NHÃN để đổi số (như Framer/Figma); Shift = nhanh ×10, Alt = chậm ×0.1
 // - Group có `id` → bấm tiêu đề để thu gọn, trạng thái nhớ trong localStorage
+// - Prop có `stack` → tên nằm trên, điều khiển chiếm trọn bề ngang (dùng cho ô chọn nhiều lựa chọn, tránh cắt chữ)
 // - Prop/Slider có `mark` → chấm xanh cạnh nhãn = giá trị riêng của slide này (đè Project style); bấm chấm (onReset) để bỏ đè
 import { useEffect, useState, type ReactNode, type PointerEvent as RPE } from "react";
 import { X, ChevronRight } from "lucide-react";
@@ -69,9 +70,9 @@ function startScrub(e: RPE, s: Scrub) {
 // Một hàng thuộc tính: nhãn cột trái 64px, điều khiển chiếm phần còn lại
 export interface Mark { mark?: boolean; onReset?: () => void }
 
-export function Prop({ label, children, hot, scrub, mark, onReset }: { label: string; children: ReactNode; hot?: boolean; scrub?: Scrub } & Mark) {
+export function Prop({ label, children, hot, scrub, mark, onReset, stack }: { label: string; children: ReactNode; hot?: boolean; scrub?: Scrub; stack?: boolean } & Mark) {
   return (
-    <div className={`prop ${hot ? "hot" : ""} ${mark ? "ovr" : ""}`}>
+    <div className={`prop ${hot ? "hot" : ""} ${mark ? "ovr" : ""} ${stack ? "stack" : ""}`}>
       <span className={`plab ${scrub ? "scrub" : ""}`} title={scrub ? "Drag to adjust · Shift faster · Alt finer" : undefined}
         onPointerDown={scrub ? (e) => startScrub(e, scrub) : undefined}>
         {mark && <button className="odot" title="Set on this slide only — click to use the project style" aria-label={`Reset ${label} to project style`}

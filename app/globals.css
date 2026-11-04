@@ -549,8 +549,12 @@ body.dragging .ed-hit.cropping { cursor: grabbing; }
 .litem:hover .eye, .litem.off .eye:not(.danger) { display: grid; }
 /* Nút trong ô chọn (Seg) co lại được, chữ dài thì cắt "…" thay vì tràn khỏi panel */
 .seg, .seg.full, .pctl .seg { min-width: 0; }
-.seg button { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* Nút segmented: rộng theo độ dài chữ (flex basis = chữ), phần dư chia đều; chỉ cắt "…" khi thật sự hết chỗ */
+.seg button { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; padding: 0 8px; }
 .pctl .seg button { padding: 0 6px; }
+/* Hàng thuộc tính kiểu "stack": tên ở trên, điều khiển chiếm trọn bề ngang */
+.prop.stack { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+.prop.stack .pctl { width: 100%; }
 /* Chân trang màn 900–1199px: bỏ chữ "slide 1 / 6" (chỉ giữ mũi tên), thu khoảng cách → thanh zoom không lọt ra ngoài */
 @media (max-width: 1199px) {
   .foot { padding: 0 8px; gap: 8px; }
