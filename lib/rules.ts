@@ -52,10 +52,11 @@ export function checkProject(p: Project): Issue[] {
   p.slides.forEach((s, i) => {
     const title = plain(textOf(s, p.loc)[0]);
     if (title.length > 34) out.push({ level: "warn", msg: `Slide ${i + 1}: headline is long, may wrap to 3+ lines`, slide: i });
-    if (!title.trim()) out.push({ level: "warn", msg: `Slide ${i + 1}: headline is empty`, slide: i });
+    // Trống ở ngôn ngữ này nhưng ngôn ngữ khác có → quên dịch/xoá nhầm (xoá hẳn layer ở mọi ngôn ngữ thì không báo)
+    if (!title.trim() && Object.values(s.t).some(([x]) => x.trim())) out.push({ level: "warn", msg: `Slide ${i + 1}: headline is empty`, slide: i });
     // Chữ khó đọc: chỉ kiểm được khi nền là 1 màu (gradient/ảnh thì bỏ qua)
     const t = themeOf(p, s);
-    if (t.bg === "color" && !s.hidden?.text && contrast(t.tcolor || (t.ink === "light" ? "#FFFFFF" : "#15151A"), t.solid) < 3)
+    if (t.bg === "color" && !s.hidden?.title && contrast(t.tcolor || (t.ink === "light" ? "#FFFFFF" : "#15151A"), t.solid) < 3)
       out.push({ level: "warn", msg: `Slide ${i + 1}: text is hard to read on this background`, slide: i });
   });
   if (p.loc !== "en") {

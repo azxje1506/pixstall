@@ -61,7 +61,7 @@ export const DEFAULT_THEME: Theme = {
   frame: "auto", frameColor: "black", bezel: 2.4, radius: 13, shadow: 28, depth: 3,
   bg: "panorama", c1: "#5B5BF0", c2: "#A78BFA", solid: "#F1F0FF", blur: 14, overlay: 35,
   font: "Inter", tsize: 8.5, align: "center", ink: "light",
-  tweight: 800, tlh: 1.08, tcolor: "", hl: "#FDE68A",
+  tweight: 800, tlh: 1.08, tcolor: "", hl: "#FDE68A", ssize: 0.48,
 };
 
 let n = 0;

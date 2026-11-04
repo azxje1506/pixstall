@@ -7,6 +7,16 @@ import { sampleProject, DEFAULT_THEME } from "./presets";
 import { loadProject, saveProject, askPersist } from "./storage";
 
 const MAX = 60;
+
+// Dữ liệu cũ: hidden.text (ẩn cả khối chữ) → ẩn cả Headline + Subtitle; tx/ty trước dời cả khối → phụ đề nhận cùng độ dời
+function migrate(p: Project): Project {
+  return { ...p, slides: p.slides.map((s) => {
+    const x = { ...s };
+    if (x.hidden?.text) { const { text, ...h } = x.hidden; void text; x.hidden = { ...h, title: true, sub: true }; }
+    if ((x.tx || x.ty) && x.sx === undefined && x.sy === undefined) { x.sx = x.tx; x.sy = x.ty; }
+    return x;
+  }) };
+}
 export type SaveState = "loading" | "saved" | "saving" | "error";
 
 export function useProject() {
@@ -23,7 +33,7 @@ export function useProject() {
   useEffect(() => {
     loadProject().then((got) => {
       // Dự án cũ thiếu trường theme mới → bù bằng DEFAULT_THEME
-      if (got) setP({ ...sampleProject(), ...got, theme: { ...DEFAULT_THEME, ...got.theme } }); else setFresh(true);
+      if (got) setP(migrate({ ...sampleProject(), ...got, theme: { ...DEFAULT_THEME, ...got.theme } })); else setFresh(true);
       loaded.current = true;
       setSave("saved");
       askPersist();

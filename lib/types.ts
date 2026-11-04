@@ -31,9 +31,11 @@ export interface Slide extends Tilt3D {
   mock: number; // số màn mẫu khi chưa có ảnh
   // Dời vị trí khi kéo trên canvas (em = % bề ngang slide); thiếu = 0 (dự án cũ)
   dx?: number; dy?: number; // máy
-  tx?: number; ty?: number; // khối chữ
+  tx?: number; ty?: number; // tiêu đề (Headline)
+  sx?: number; sy?: number; // phụ đề (Subtitle)
+  extras?: TextItem[]; // layer chữ tự do
   front?: "text" | "device"; // phần nào nằm trên (mặc định chữ trên máy)
-  hidden?: { text?: boolean; device?: boolean }; // ẩn layer (cả lúc xuất ảnh)
+  hidden?: { title?: boolean; sub?: boolean; device?: boolean; text?: boolean }; // ẩn layer (cả lúc xuất); text = bản cũ, tự chuyển khi nạp
   override?: Partial<Theme>; // style riêng của slide này, đè lên Project style
   tw?: number; // bề ngang khối chữ (% slide); thiếu = theo layout
 }
@@ -63,6 +65,19 @@ export interface Theme {
   tlh: number; // giãn dòng tiêu đề (0.9..1.5)
   tcolor: string; // màu chữ tự chọn; "" = theo ink (trắng/đen)
   hl: string; // màu tô cho từ nằm trong *dấu sao*
+  ssize: number; // cỡ phụ đề so với tiêu đề (0.3..0.8)
+}
+
+// Layer chữ tự do (thêm bằng "+ Add text"): vị trí tâm x,y (em), chữ theo ngôn ngữ
+export interface TextItem {
+  id: string;
+  t: Record<string, string>; // locale -> nội dung (hỗ trợ *từ* để tô màu)
+  x: number; y: number; // tâm khối chữ (em, so với góc trái trên slide)
+  size: number; // em
+  weight: number;
+  color?: string; // "" / thiếu = theo màu chữ của slide
+  pill?: boolean; // dạng nhãn viên thuốc (nền = màu tô)
+  hidden?: boolean;
 }
 
 // Các khoá theme được phép đè riêng từng slide (khung máy, nền, chữ)
