@@ -25,9 +25,12 @@ function background(p: Project, i: number, hEm: number, n: number): CSSPropertie
 }
 
 // --- Chế độ sửa trên canvas (dùng chung cho Slide và Feature graphic) ---
-export type CanvasPick = "device" | "text" | null;
+// Cấp chọn: null = không chọn gì · "slide" = cả slide (bấm nền) · "text" / "device" = một layer
+export type CanvasPick = "slide" | "device" | "text" | null;
+export type LayerPick = "device" | "text";
 export interface CanvasEdit {
   sel: CanvasPick;
+  hover?: LayerPick | null; // rê chuột trên cây Layers → viền layer tương ứng trên canvas
   onSel: (v: CanvasPick) => void;
   onPatch: (patch: Record<string, unknown>, tag: string) => void; // patch vào slide đang chọn hoặc feature
 }
@@ -83,9 +86,9 @@ function measure(a: Rect, o: Rect, pxPerEm: number): Guides["m"] {
 function useEditKit(edit: CanvasEdit | undefined, k: number, hEm: number, o: { dx: number; dy: number; tx: number; ty: number },
   scale: { v: number; min: number; max: number; mul: number } | null, rot: { v: number } | null, pxPerEm: number) {
   const [g, setG] = useState<Guides>({});
-  if (!edit) return { hitDev: undefined, hitText: undefined, handle: undefined, guides: null, editable: () => undefined };
+  if (!edit) return { hitDev: undefined, hitText: undefined, handle: undefined, guides: null, editable: () => undefined, root: undefined };
 
-  const drag = (e: RPE, what: "device" | "text") => {
+  const drag = (e: RPE, what: LayerPick) => {
     if (e.button !== 0 || (e.target as HTMLElement).isContentEditable) return;
     e.stopPropagation(); edit.onSel(what);
     const el = e.currentTarget as HTMLElement, root = el.closest("[data-cv]") as HTMLElement, R = root.getBoundingClientRect();
@@ -108,9 +111,9 @@ function useEditKit(edit: CanvasEdit | undefined, k: number, hEm: number, o: { d
       edit.onPatch({ [kx]: r1(x), [ky]: r1(y) }, "drag-" + what);
     }, () => setG({}));
   };
-  const hit = (what: "device" | "text") => ({
+  const hit = (what: LayerPick) => ({
     "data-pick": what,
-    className: `ed-hit ${what} ${edit.sel === what ? "sel" : ""}`,
+    className: `ed-hit ${what} ${edit.sel === what ? "sel" : ""} ${edit.hover === what ? "hov" : ""}`,
     onPointerDown: (e: RPE) => drag(e, what),
     onDragStart: (e: { preventDefault: () => void }) => e.preventDefault(),
   });
@@ -175,7 +178,9 @@ function useEditKit(edit: CanvasEdit | undefined, k: number, hEm: number, o: { d
       {g.tip && <div className="ed-tip" style={{ left: `${g.tip.x}em`, top: `${g.tip.y}em` }}>{g.tip.text}</div>}
     </>
   );
-  return { hitDev: hit("device"), hitText: hit("text"), handle, guides, editable };
+  // Bấm nền slide (chỗ không có layer) → chọn cấp Slide
+  const root = { onPointerDown: (e: RPE) => { if (e.button !== 0) return; e.stopPropagation(); edit.onSel("slide"); } };
+  return { hitDev: hit("device"), hitText: hit("text"), handle, guides, editable, root };
 }
 
 function Screen({ p, i }: { p: Project; i: number }) {
@@ -234,18 +239,18 @@ export function SlideCanvas({ p, index, width, size, loc, edit }: { p: Project; 
   if (s.layout === "offset") { textStyle.textAlign = "left"; textStyle.right = "30em"; }
 
   return (
-    <div data-cv style={{ position: "relative", overflow: "hidden", width, height: (width * size.h) / size.w, fontSize: width / 100, ...background(p, index, hEm, n) }}>
+    <div data-cv {...kit.root} style={{ position: "relative", overflow: "hidden", width, height: (width * size.h) / size.w, fontSize: width / 100, ...background(p, index, hEm, n) }}>
       {t.bg === "blur" && s.img && (
         <>
           <div style={{ position: "absolute", inset: "-10%", backgroundImage: `url(${s.img})`, backgroundSize: "cover", backgroundPosition: "center", filter: `blur(${t.blur * 0.12}em)` }} />
           <div style={{ position: "absolute", inset: 0, background: `rgba(0,0,0,${t.overlay / 100})` }} />
         </>
       )}
-      <div {...hitText} style={textStyle}>
+      {!s.hidden?.text && <div {...hitText} style={textStyle}>
         <h2 {...editable(title, setLine(0))} style={{ fontSize: `${t.tsize}em`, fontWeight: 800, lineHeight: 1.08, letterSpacing: "-.02em", margin: 0 }}>{title}</h2>
         {sub && <p {...editable(sub, setLine(1))} style={{ fontSize: `${t.tsize * 0.48}em`, marginTop: "1.4em", marginBottom: 0, opacity: 0.85, fontWeight: 500, lineHeight: 1.3 }}>{sub}</p>}
-      </div>
-      {devices}
+      </div>}
+      {!s.hidden?.device && devices}
       {kit.guides}
     </div>
   );
@@ -262,7 +267,7 @@ export function FeatureCanvas({ p, width, edit }: { p: Project; width: number; e
   const dw = f.scale, dev = { kind: "phone" as const, store: "play" as const, theme: t, rx: f.rx, ry: f.ry, rz: f.rz };
   const y0 = (hEm - dw * ASPECT.phone) / 2;
   return (
-    <div data-cv style={{ position: "relative", overflow: "hidden", width, height: (width * FEATURE_SIZE.h) / FEATURE_SIZE.w, fontSize: width / 100, ...background(p, 0, hEm, 1) }}>
+    <div data-cv {...kit.root} style={{ position: "relative", overflow: "hidden", width, height: (width * FEATURE_SIZE.h) / FEATURE_SIZE.w, fontSize: width / 100, ...background(p, 0, hEm, 1) }}>
       <div {...kit.hitText} style={{ position: "absolute", left: "7em", top: "50%", transform: `translate(${tx}em, calc(-50% + ${ty}em))`, color: ink, fontFamily: FONTS[t.font], zIndex: f.front === "device" ? 0 : 3, width: "48em" }}>
         <div style={{ width: "10em", height: "10em", borderRadius: "2.6em", background: "#fff", display: "grid", placeItems: "center", boxShadow: "0 .8em 2.4em rgba(0,0,0,.16)", color: t.c1 }}>
           <Icon style={{ width: "5.4em", height: "5.4em" }} strokeWidth={2} />

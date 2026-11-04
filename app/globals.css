@@ -418,3 +418,41 @@ kbd { font: 500 10.5px var(--font-mono), monospace; padding: 2px 6px; border-rad
 .right > .group, .right > div > .group { animation: none; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 .samplebar .stext { flex: 1; min-width: 0; line-height: 1.4; }
+
+/* --- Đợt A: chọn theo layer --- */
+/* Cây Layers (cột trái) */
+.lgroup { display: grid; gap: 2px; }
+.app .item .tw { width: 12px; height: 12px; color: var(--muted); margin: 0 -4px 0 -6px; transition: transform .15s; flex: none; }
+.app .item .tw.open { transform: rotate(90deg); }
+.item.parent { background: transparent; border-color: var(--line); }
+.lchildren { display: grid; gap: 2px; margin: 0 0 4px 28px; padding-left: 8px; border-left: 1px solid var(--line); }
+.litem { position: relative; display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 4px 0 8px; border-radius: 6px; cursor: pointer; }
+.litem:hover { background: var(--soft); }
+.litem.on { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
+.litem.on .lsub { color: color-mix(in srgb, var(--accent) 70%, var(--muted)); }
+.litem.off .lname, .litem.off .lsub, .litem.off .lico, .lrow.off .lmain { opacity: .45; }
+.lico { display: grid; place-items: center; width: 16px; color: var(--muted); flex: none; }
+.litem.on .lico { color: var(--accent); }
+.app .lico svg.lucide { width: 13px; height: 13px; }
+.lname { font-weight: 500; font-size: 12px; flex: none; }
+.lsub { flex: 1; min-width: 0; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.litem .eye { width: 22px; height: 22px; opacity: 0; }
+.litem:hover .eye, .litem.off .eye { opacity: 1; }
+/* Danh sách layer trong panel cấp Slide */
+.llist { display: grid; gap: 4px; }
+.lrow { display: flex; align-items: center; gap: 4px; }
+.lmain { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 8px; border-radius: 8px; background: var(--soft); text-align: left; }
+.lmain:hover { box-shadow: inset 0 0 0 1px var(--accent); }
+.app .lgo { width: 12px; height: 12px; color: var(--muted); }
+/* Breadcrumb + nhãn All slides */
+.crumb { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.cr-root { height: 24px; padding: 0 6px; margin-left: -6px; border-radius: 6px; color: var(--muted); font-weight: 500; }
+.cr-root:hover { background: var(--soft); color: var(--text); }
+.cr-cur { display: flex; align-items: center; gap: 6px; font-weight: 600; white-space: nowrap; }
+.app .cr-cur svg.lucide { width: 13px; height: 13px; color: var(--accent); }
+.app .cr-sep { width: 12px; height: 12px; color: var(--muted); }
+.allbadge { font-size: 10px; font-weight: 500; padding: 2px 6px; border-radius: 999px; background: var(--soft); color: var(--muted); }
+.hidnote { display: flex; align-items: center; gap: 6px; margin: 12px 16px 0; padding: 8px 12px; border-radius: 8px; background: #FEF3C7; color: #92400E; font-size: 12px; }
+.dark .hidnote { background: #3a2a05; color: #fcd34d; }
+/* Canvas: viền layer khi rê trên cây Layers */
+.ed-hit.hov:not(.sel) { outline: 1.5px solid color-mix(in srgb, var(--accent) 80%, transparent) !important; }

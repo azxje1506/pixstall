@@ -2,9 +2,12 @@
 // Nhân bản / đổi ảnh / xoá nằm trên TỪNG hàng (hiện khi rê chuột); xoá có toast Hoàn tác ở Editor
 // Kéo hàng: vạch tím báo chỗ thả (trên/dưới hàng đích). Thả FILE ảnh vào vùng trống dưới danh sách = thêm slide
 // Còn màn mẫu → một dải thông báo chung thay vì nhãn "Sample" lặp ở mọi hàng (mỗi hàng chỉ còn chấm nhỏ)
+// Cây Layers: slide đang chọn mở ra các layer con (Text, Device) — bấm để chọn (đồng bộ 2 chiều với canvas), mắt để ẩn,
+// rê chuột để viền layer đó trên canvas. Mũi tên trên hàng slide khác = chọn slide rồi mở ra
 // Thumbnail nằm trong khung CỐ ĐỊNH 40×64 px, slide được co vừa (contain) → hàng nào cũng cao bằng nhau dù iPhone hay iPad
-import { useState } from "react";
-import { GripVertical, Trash2, Plus, CopyPlus, ImageUp, Upload, Image as ImageIcon } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { GripVertical, Trash2, Plus, CopyPlus, ImageUp, Upload, Image as ImageIcon, ChevronRight, Type, Smartphone, Eye, EyeOff } from "lucide-react";
+import type { CanvasPick, LayerPick } from "./SlideCanvas";
 import type { Project } from "@/lib/types";
 import { LIMIT } from "@/lib/presets";
 import { currentSize, textOf } from "@/lib/rules";
@@ -25,9 +28,25 @@ interface Props {
   onMenu: (x: number, y: number, i: number) => void; // chuột phải trên hàng
   onReplace: (i: number) => void; // đổi ảnh của hàng i
   onFiles: (f: FileList) => void; // thả file vào vùng trống
+  pick: CanvasPick;
+  onLayer: (i: number, l: CanvasPick) => void; // i = -1: feature graphic
+  onToggleHidden: (i: number, l: LayerPick) => void;
+  onHover: (l: LayerPick | null) => void;
 }
 
-export function SlideList({ p, sel, tab, onPick, onFeature, onMove, onDelete, onDuplicate, onUpload, onMenu, onReplace, onFiles }: Props) {
+// Hàng layer con (thụt vào dưới slide/feature)
+function LayerRow({ icon, name, sub, on, hidden, onClick, onToggle, onHover }: { icon: ReactNode; name: string; sub: string; on: boolean; hidden?: boolean; onClick: () => void; onToggle?: () => void; onHover: (v: boolean) => void }) {
+  return (
+    <div className={`litem ${on ? "on" : ""} ${hidden ? "off" : ""}`} onClick={onClick} onMouseEnter={() => onHover(true)} onMouseLeave={() => onHover(false)}>
+      <span className="lico">{icon}</span>
+      <span className="lname">{name}</span>
+      <span className="lsub">{sub}</span>
+      {onToggle && <button className="ibtn eye" title={hidden ? "Show layer" : "Hide layer"} aria-label={`${hidden ? "Show" : "Hide"} ${name}`} onClick={(e) => { e.stopPropagation(); onToggle(); }}>{hidden ? <EyeOff /> : <Eye />}</button>}
+    </div>
+  );
+}
+
+export function SlideList({ p, sel, tab, onPick, onFeature, onMove, onDelete, onDuplicate, onUpload, onMenu, onReplace, onFiles, pick, onLayer, onToggleHidden, onHover }: Props) {
   const z = currentSize(p);
   const [drag, setDrag] = useState<number | null>(null);
   const [mark, setMark] = useState<{ i: number; after: boolean } | null>(null); // vạch chỗ thả khi kéo hàng
@@ -58,8 +77,9 @@ export function SlideList({ p, sel, tab, onPick, onFeature, onMove, onDelete, on
         </button>
       )}
       <div className="list">
-        {p.slides.map((s, i) => (
-          <div key={s.id} draggable
+        {p.slides.map((s, i) => { const open = tab === "slide" && i === sel; return (
+          <div key={s.id} className="lgroup">
+          <div draggable
             onDragStart={(e) => { setDrag(i); e.dataTransfer.effectAllowed = "move"; }}
             onDragEnd={() => { setDrag(null); setMark(null); }}
             onDragOver={(e) => {
@@ -69,9 +89,10 @@ export function SlideList({ p, sel, tab, onPick, onFeature, onMove, onDelete, on
               if (mark?.i !== i || mark.after !== after) setMark({ i, after });
             }}
             onDrop={(e) => { if (drag === null) return; e.preventDefault(); if (mark) dropTo(mark.i, mark.after); setDrag(null); setMark(null); }}
-            className={`item ${tab === "slide" && i === sel ? "on" : ""} ${i >= mx ? "over" : ""} ${drag === i ? "dragging" : ""} ${mark?.i === i ? (mark.after ? "mark-after" : "mark-before") : ""}`} onClick={() => onPick(i)}
+            className={`item ${open ? "on" : ""} ${open && (pick === "text" || pick === "device") ? "parent" : ""} ${i >= mx ? "over" : ""} ${drag === i ? "dragging" : ""} ${mark?.i === i ? (mark.after ? "mark-after" : "mark-before") : ""}`} onClick={() => onPick(i)}
             onContextMenu={(e) => { e.preventDefault(); onMenu(e.clientX, e.clientY, i); }}>
             <GripVertical className="grip" />
+            <ChevronRight className={`tw ${open ? "open" : ""}`} />
             <div className="thumb" style={{ width: TW, height: TH }}>
               <div className="thumb-in"><SlideCanvas p={p} index={i} width={tw} size={z} /></div>
             </div>
@@ -89,15 +110,30 @@ export function SlideList({ p, sel, tab, onPick, onFeature, onMove, onDelete, on
               <button className="ibtn danger" title="Delete" aria-label={`Delete slide ${i + 1}`} onClick={() => onDelete(i)}><Trash2 /></button>
             </div>
           </div>
-        ))}
+          {open && (
+            <div className="lchildren">
+              <LayerRow icon={<Type />} name="Text" sub={textOf(s, p.loc)[0] || "Untitled"} on={pick === "text"} hidden={s.hidden?.text}
+                onClick={() => onLayer(i, "text")} onToggle={() => onToggleHidden(i, "text")} onHover={(v) => onHover(v ? "text" : null)} />
+              <LayerRow icon={<Smartphone />} name="Device" sub={s.img ? "Screenshot" : "Sample"} on={pick === "device"} hidden={s.hidden?.device}
+                onClick={() => onLayer(i, "device")} onToggle={() => onToggleHidden(i, "device")} onHover={(v) => onHover(v ? "device" : null)} />
+            </div>
+          )}
+          </div>
+        ); })}
         {p.store === "play" && (
           <>
             <div className="sect ttl">Play assets</div>
-            <div className={`item ${tab === "feature" ? "on" : ""}`} onClick={onFeature}>
+            <div className={`item ${tab === "feature" ? "on" : ""} ${tab === "feature" && (pick === "text" || pick === "device") ? "parent" : ""}`} onClick={onFeature}>
               <ImageIcon className="grip" />
               <div className="thumb" style={{ width: 64, height: 32 }}><FeatureCanvas p={p} width={64} /></div>
               <div className="meta"><div className="name">Feature graphic</div><div className="sub mono">1024×500</div></div>
             </div>
+            {tab === "feature" && (
+              <div className="lchildren">
+                <LayerRow icon={<Type />} name="Text & icon" sub={p.feature.name || "—"} on={pick === "text"} onClick={() => onLayer(-1, "text")} onHover={(v) => onHover(v ? "text" : null)} />
+                {p.feature.device && <LayerRow icon={<Smartphone />} name="Devices" sub="2 phones" on={pick === "device"} onClick={() => onLayer(-1, "device")} onHover={(v) => onHover(v ? "device" : null)} />}
+              </div>
+            )}
           </>
         )}
         {/* Vùng trống còn lại: thả file ảnh vào để thêm slide */}

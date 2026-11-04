@@ -33,6 +33,7 @@ export interface Slide extends Tilt3D {
   dx?: number; dy?: number; // máy
   tx?: number; ty?: number; // khối chữ
   front?: "text" | "device"; // phần nào nằm trên (mặc định chữ trên máy)
+  hidden?: { text?: boolean; device?: boolean }; // ẩn layer (cả lúc xuất ảnh)
 }
 
 export type FrameStyle = "auto" | "iphone" | "pixel" | "none";

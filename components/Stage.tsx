@@ -144,11 +144,12 @@ export function Stage({ p, sel, tab, view, onPick, onNav, onFiles, edit, welcome
 
   const ctx = (e: RME, i: number) => {
     e.preventDefault();
-    const tgt = (e.target as HTMLElement).closest("[data-pick]")?.getAttribute("data-pick") as CanvasPick;
+    const tgt = ((e.target as HTMLElement).closest("[data-pick]")?.getAttribute("data-pick") ?? null) as CanvasPick;
     const own = i === -1 || i === sel;
-    if (i >= 0) onPick(i);
-    if (own && tgt) edit.onSel(tgt);
-    onMenu(e.clientX, e.clientY, i, own ? tgt : null);
+    if (i >= 0 && !own) onPick(i);
+    const layer = own && tgt ? tgt : "slide";
+    edit.onSel(layer);
+    onMenu(e.clientX, e.clientY, i, layer);
   };
 
   const issues = checkProject(p);

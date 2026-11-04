@@ -10,7 +10,7 @@ import { SlideList } from "./SlideList";
 import { Stage } from "./Stage";
 import { Inspector } from "./Inspector";
 import { SizeDialog, ExportDialog, KeysDialog } from "./Dialogs";
-import type { CanvasPick } from "./SlideCanvas";
+import type { CanvasPick, LayerPick } from "./SlideCanvas";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { CopyPlus, Trash2, ImageUp, RotateCcw, BringToFront, SendToBack } from "lucide-react";
 
@@ -27,7 +27,8 @@ export default function Editor() {
   const toastT = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [welcome, setWelcome] = useState(true); // tắt sau khi user upload hoặc chọn xem mẫu
   const [narrowOk, setNarrowOk] = useState(false); // màn hẹp: user bấm "vẫn mở" 
-  const [pick, setPick] = useState<CanvasPick>(null); // phần tử đang chọn trên canvas
+  const [pick, setPick] = useState<CanvasPick>(null); // cấp đang chọn: null / slide / text / device
+  const [hov, setHov] = useState<LayerPick | null>(null); // layer đang rê trên cây Layers
   const [menu, setMenu] = useState<{ x: number; y: number; i: number; target: CanvasPick } | null>(null); // menu chuột phải (i = -1: feature)
   const addInput = useRef<HTMLInputElement>(null);
   const replaceInput = useRef<HTMLInputElement>(null);
@@ -35,7 +36,15 @@ export default function Editor() {
   const idx = Math.min(sel, n - 1);
 
   useEffect(() => { document.documentElement.classList.toggle("dark", dark); }, [dark]);
-  useEffect(() => { setPick(null); }, [idx, tab]); // đổi slide → bỏ chọn
+  // Đổi slide / tab → chọn cấp Slide của slide mới (không giữ layer của slide cũ)
+  const first = useRef(true);
+  useEffect(() => { if (first.current) { first.current = false; return; } setPick("slide"); }, [idx, tab]);
+  // Chọn một layer của slide i (từ cây Layers)
+  const pickLayer = (i: number, layer: CanvasPick) => {
+    if (i === -1) setTab("feature"); else { setSel(i); setTab("slide"); }
+    setTimeout(() => setPick(layer), 0); // chạy sau effect đổi slide
+  };
+  const toggleHidden = (i: number, layer: LayerPick) => update((d) => ({ ...d, slides: d.slides.map((s, j) => (j === i ? { ...s, hidden: { ...s.hidden, [layer]: !s.hidden?.[layer] } } : s)) }));
 
   // Sửa slide đang chọn (dùng chung cho canvas + phím nhích)
   const patchSlide = (patch: Partial<Slide>, tag = "") => update((d) => ({ ...d, slides: d.slides.map((s, i) => (i === idx ? { ...s, ...patch } : s)) }), tag);
@@ -51,10 +60,11 @@ export default function Editor() {
       if (typing) return;
       if (e.key === "?" && !dialog) { e.preventDefault(); setDialog("keys"); return; }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "d") { e.preventDefault(); if (tab === "slide") dupAt(idx); return; }
-      if (e.key === "Escape") return setPick(null);
+      // Esc lùi 1 cấp: layer → slide → không chọn (đang gõ chữ thì ô chữ tự xử lý Esc)
+      if (e.key === "Escape") return setPick((x) => (x === "text" || x === "device" ? "slide" : null));
       const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
       if (!dir) return;
-      if (pick) {
+      if (pick === "text" || pick === "device") {
         e.preventDefault();
         const st = e.shiftKey ? 2 : 0.5, s = tab === "feature" ? p.feature : p.slides[idx];
         const [kx, ky] = pick === "device" ? ["dx", "dy"] as const : ["tx", "ty"] as const;
@@ -91,7 +101,7 @@ export default function Editor() {
     const front = it.front ?? "text", moved = !!(it.dx || it.dy || it.tx || it.ty);
     const name = m.target === "device" ? (isF ? "devices" : "device") : "text";
     const items: MenuItem[] = [];
-    if (m.target) items.push(
+    if (m.target === "text" || m.target === "device") items.push(
       { label: `Bring ${name} to front`, icon: <BringToFront />, disabled: front === m.target, onClick: () => patch({ front: m.target }) },
       { label: `Send ${name} to back`, icon: <SendToBack />, disabled: front !== m.target, onClick: () => patch({ front: m.target === "device" ? "text" : "device" }) },
       "sep",
@@ -159,19 +169,21 @@ export default function Editor() {
         onExport={() => setDialog("export")} onAddSize={() => setDialog("size")} />
       <div className="body">
         <SlideList p={p} sel={idx} tab={tab}
-          onPick={(i) => { setSel(i); setTab("slide"); }}
-          onFeature={() => setTab("feature")}
+          onPick={(i) => { setSel(i); setTab("slide"); setPick("slide"); }}
+          onFeature={() => { setTab("feature"); setPick("slide"); }}
           onMove={(from, to) => { update((d) => { const s = [...d.slides]; const [m] = s.splice(from, 1); s.splice(to, 0, m); return { ...d, slides: s }; }); setSel(to); }}
           onDelete={delAt} onDuplicate={dupAt} onReplace={replaceAt} onFiles={addFiles}
+          pick={pick} onLayer={pickLayer} onToggleHidden={toggleHidden} onHover={setHov}
           onMenu={(x, y, i) => { setSel(i); setTab("slide"); setMenu({ x, y, i, target: null }); }}
           onUpload={() => addInput.current?.click()} />
         <Stage p={p} sel={idx} tab={tab} view={view} onFiles={addFiles}
           welcome={welcome && fresh && allSample} onUpload={() => addInput.current?.click()} onSkipWelcome={() => setWelcome(false)}
           onPick={(i) => { setSel(i); setTab("slide"); }}
           onNav={(d) => { setTab("slide"); setSel((idx + d + n) % n); }}
-          edit={{ sel: pick, onSel: setPick, onPatch: patchCur }}
+          edit={{ sel: pick, hover: hov, onSel: setPick, onPatch: patchCur }}
           onMenu={(x, y, i, target) => setMenu({ x, y, i, target })} />
         <Inspector p={p} sel={idx} tab={tab} update={update} pick={pick}
+          onPickLayer={setPick} onToggleHidden={(l) => toggleHidden(idx, l)}
           onReplace={() => replaceInput.current?.click()} onReplaceFile={replace} onFlash={flash}
           onDuplicate={() => dupAt(idx)} />
       </div>
