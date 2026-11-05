@@ -586,3 +586,14 @@ body.dragging .ed-hit.cropping { cursor: grabbing; }
 .chip.target.open, .filebtn.open, .gbtn.open, .zval.open { background: var(--soft); color: var(--text); }
 .ladd.open { color: var(--accent); }
 .mlist:focus { outline: 0; }
+
+/* Template mẫu (tab Project style): lưới 2 cột thẻ xem trước */
+.tgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.tcard { display: grid; gap: 5px; padding: 4px 4px 6px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); text-align: left; font-size: 12px; font-weight: 500; cursor: pointer; }
+.tcard:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.tcard.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.tcard > span { padding: 0 4px; }
+.tthumb { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; height: 62px; border-radius: 7px; overflow: hidden; padding: 0 3px; }
+.tslide { display: flex; flex-direction: column; justify-content: space-between; padding-top: 7px; min-width: 0; }
+.tslide b { font-size: 11px; line-height: 1; white-space: nowrap; padding: 0 3px; }
+.tslide i { display: block; width: 58%; height: 34px; align-self: center; }

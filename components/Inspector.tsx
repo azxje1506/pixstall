@@ -22,6 +22,7 @@ import type { CanvasPick, LayerPick } from "./SlideCanvas";
 import { isLayer, isHidden, layersOf, layerName as nameOf, extraOf, extraText, patchExtra, posOf, withPos, featText, setFeatText, fLayersOf, fIsHidden, fRemovable, fLayerName, phoneIdx, phoneOf, setPhone, phoneCount as phoneCountOf, type LayerId } from "@/lib/layers";
 import { imgSrc, imgMeta, putImage } from "@/lib/images";
 import { ASPECT } from "./Device";
+import { TEMPLATES, activeTemplate, applyTemplate, type Template } from "@/lib/templates";
 import { panRange, screenRatio, featureShot } from "./SlideCanvas";
 import { layerIcon } from "./SlideList";
 
@@ -223,8 +224,41 @@ function LayerList({ rows, onPick, onToggle, addItems }: { rows: { id: LayerId; 
   );
 }
 
-// --- Tab Project style: mọi thiết lập dùng chung + số slide đang có style riêng ---
-function StyleTab({ sc, owned, onClearAll }: { sc: Scope; owned: number; onClearAll: () => void }) {
+// --- Template mẫu: thẻ xem trước (nền + máy + chữ thu nhỏ), bấm = áp cả bộ style ---
+function TplThumb({ t }: { t: Theme }) {
+  const bg = t.bg === "color" ? t.solid : `linear-gradient(${t.bg === "panorama" ? "100deg" : "160deg"},${t.c1},${t.c2})`;
+  const ink = t.tcolor || (t.ink === "light" ? "#FFFFFF" : "#15151A");
+  return (
+    <div className="tthumb" style={{ background: bg }}>
+      {[0, 1].map((i) => (
+        <div key={i} className="tslide" style={{ alignItems: t.align === "left" ? "flex-start" : "center" }}>
+          <b style={{ fontFamily: FONTS[t.font], fontWeight: t.tweight, color: ink }}>{i ? "Big " : ""}<span style={{ color: t.hl }}>{i ? "you" : "Aa"}</span></b>
+          <i style={{ background: FRAME_COLORS[t.frameColor].body, borderRadius: `${t.radius * 0.3}px ${t.radius * 0.3}px 0 0`, boxShadow: `0 ${t.shadow / 10}px ${t.shadow / 5}px rgba(0,0,0,.${t.shadow > 35 ? 4 : 2})` }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TemplateGroup({ t, onApply }: { t: Theme; onApply: (tpl: Template) => void }) {
+  const on = activeTemplate(t);
+  return (
+    <Group id="st-tpl" title="Templates">
+      <div className="tgrid">
+        {TEMPLATES.map((x) => (
+          <button key={x.id} className={`tcard ${on === x.id ? "on" : ""}`} title={x.desc} aria-label={`Apply ${x.name} template`} aria-pressed={on === x.id} onClick={() => onApply(x)}>
+            <TplThumb t={x.theme} />
+            <span>{x.name}</span>
+          </button>
+        ))}
+      </div>
+      <p className="hint">Changes frame, background &amp; type on every slide. Text, images and layouts stay.</p>
+    </Group>
+  );
+}
+
+// --- Tab Project style: template + mọi thiết lập dùng chung + số slide đang có style riêng ---
+function StyleTab({ sc, owned, onClearAll, onTemplate }: { sc: Scope; owned: number; onClearAll: () => void; onTemplate: (tpl: Template) => void }) {
   return (
     <>
       <p className="tabnote">Defaults for every slide{sc.t.bg === "panorama" ? " and the feature graphic" : ""}. Select a slide or layer to give just that one its own look.</p>
@@ -234,6 +268,7 @@ function StyleTab({ sc, owned, onClearAll }: { sc: Scope; owned: number; onClear
           <button className="gbtn" onClick={onClearAll}><RotateCcw />Reset all</button>
         </div>
       )}
+      <TemplateGroup t={sc.t} onApply={onTemplate} />
       <FrameGroup sc={sc} />
       <BgGroup sc={sc} />
       <TypeGroup sc={sc} />
@@ -311,7 +346,8 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
     </div>
   );
   if (ptab === "style") return <aside className="right">{head}<StyleTab sc={project} owned={owned}
-    onClearAll={() => { update((d) => ({ ...d, slides: d.slides.map((x) => ({ ...x, override: undefined })) })); onFlash("Every slide follows the project style again", true); }} /></aside>;
+    onClearAll={() => { update((d) => ({ ...d, slides: d.slides.map((x) => ({ ...x, override: undefined })) })); onFlash("Every slide follows the project style again", true); }}
+    onTemplate={(tpl) => { update((d) => applyTemplate(d, tpl)); onFlash(`${tpl.name} template applied${owned ? ` · ${owned} slide style${owned > 1 ? "s" : ""} reset` : ""}`, true); }} /></aside>;
 
   // Breadcrumb: "Slide 03 › Device"; bấm phần đầu để lùi về cấp slide
   const rootName = isFeature ? "Feature graphic" : `Slide ${String(sel + 1).padStart(2, "0")}`;

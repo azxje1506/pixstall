@@ -14,6 +14,7 @@ const { chromium } = require('playwright');
     // Kiểm 1 popover: mở bằng trigger, đo khung, so với nút; rồi thử đóng
     const check = async (name, trigger, closeHow = 'esc') => {
       const t = pg.locator(trigger).first();
+      await t.scrollIntoViewIfNeeded(); await pg.waitForTimeout(150); // panel dài (có Templates) → cuộn trước khi đo
       const tb = await t.boundingBox();
       await t.click(); await pg.waitForTimeout(250);
       const pop = pg.locator('.pop').last();
@@ -57,6 +58,7 @@ const { chromium } = require('playwright');
     // Màu: kéo trong bảng màu không làm đóng bảng
     await pg.click('.tabs button:has-text("Project style")'); await pg.waitForTimeout(150);
     res[`${W}/before-color`] = { pops: await pg.locator('.pop').count(), cfbtn: await pg.locator('.right .cf-btn').count(), tab: await pg.$eval('.tabs .on', e => e.innerText) };
+    await pg.locator('.right .cf-btn').first().scrollIntoViewIfNeeded(); await pg.waitForTimeout(150);
     await pg.locator('.right .cf-btn').first().click(); await pg.waitForTimeout(250);
     res[`${W}/after-click`] = { pops: await pg.locator('.pop').count(), exp: await pg.locator('.right .cf-btn').first().getAttribute('aria-expanded') };
     if (!(await pg.locator('.cf-sv').count())) { console.log(JSON.stringify(res, null, 1)); process.exit(1); }
