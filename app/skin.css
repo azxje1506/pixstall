@@ -1,0 +1,129 @@
+/* Lớp style theo kit UI8 (nạp SAU globals.css, chỉ đè token + bề mặt; bỏ file này là về giao diện cũ)
+   Nguồn số liệu: giải mã thẳng file Figma bằng ~/ui8-kits/tool/figdump.js (05/11/2026)
+   - Nexus (SaaS dashboard): thang xám zinc, viền #E4E4E7, nhấn tím #583DF6 / #4D2FDA, font Fustat, bo 8/12, nút & nhãn dạng viên thuốc (radius 100)
+   - Refina (photo editor): nền canvas #F9F9F9, bóng mềm lớn (0 4 33.5 rgba(0,0,0,.10)) cho lớp nổi, nút chính viên thuốc, chấm vàng #FFEF56 làm điểm nhấn
+   Quy tắc dùng: màu/bo/bóng lấy qua biến --r-*, --sh-*, đừng gõ số cứng ở component mới */
+
+/* --- Token sáng (Nexus light + Refina canvas) --- */
+:root {
+  --bg: #F4F4F5;            /* zinc-100: nền khung app */
+  --canvas: #F9F9F9;        /* Refina: nền vùng làm việc */
+  --panel: #FFFFFF;
+  --line: #E4E4E7;          /* zinc-200: viền */
+  --line2: #D4D4D8;         /* zinc-300: viền đậm khi hover */
+  --text: #27272A;          /* zinc-800 */
+  --muted: #71717A;         /* zinc-500 */
+  --soft: #F4F4F5;          /* zinc-100: nền ô nhập, nút phụ */
+  --accent: #583DF6;        /* Nexus primary */
+  --accent2: #4D2FDA;       /* Nexus primary đậm (hover) */
+  --accent-soft: #EEEBFE;   /* tím rất nhạt cho trạng thái chọn */
+  --pop: #FFEF56;           /* Refina vàng: chấm nhấn nhỏ */
+  --ok: #12A150; --warn: #D97706;
+  --r-sm: 6px; --r: 8px; --r-lg: 12px; --r-xl: 20px; --r-pill: 999px;
+  --sh-1: 0 1px 2px rgba(16,24,40,.06), 0 1px 4px rgba(152,152,152,.18);   /* Nexus: nút đang chọn, thẻ */
+  --sh-pop: 0 4px 33.5px rgba(0,0,0,.10), 0 1px 3px rgba(0,0,0,.06);       /* Refina: menu, popover */
+  --sh-modal: 0 24px 64px rgba(24,24,27,.18), 0 2px 8px rgba(0,0,0,.06);
+}
+/* --- Token tối (Nexus dark: zinc-900/800/700) --- */
+.dark {
+  --bg: #09090B; --canvas: #111113; --panel: #18181B; --line: #27272A; --line2: #3F3F46;
+  --text: #F4F4F5; --muted: #A1A1AA; --soft: #27272A; --accent: #756CFF; --accent2: #583DF6; --accent-soft: rgba(117,108,255,.16);
+  --sh-1: 0 1px 2px rgba(0,0,0,.4); --sh-pop: 0 8px 32px rgba(0,0,0,.5), 0 0 0 1px #27272A; --sh-modal: 0 24px 64px rgba(0,0,0,.6), 0 0 0 1px #27272A;
+}
+
+/* --- Chữ: Fustat cho giao diện (font slide giữ nguyên) --- */
+body { font-family: var(--font-ui), var(--font-inter), system-ui, sans-serif; font-size: 13px; letter-spacing: -.003em; -webkit-font-smoothing: antialiased; }
+.lab { letter-spacing: .06em; font-weight: 600; font-size: 10px; }
+.ttl { font-weight: 700; letter-spacing: -.005em; }
+
+/* --- Khung: thanh trên + 2 cột trắng, canvas giữa nền Refina --- */
+.top { border-bottom-color: var(--line); }
+.logo .mark { border-radius: 7px; background: linear-gradient(135deg, var(--accent), #9FAAFF); box-shadow: inset 0 0 0 4px rgba(255,255,255,.3); position: relative; }
+.logo .mark::after { content: ""; position: absolute; right: -2px; top: -2px; width: 7px; height: 7px; border-radius: 50%; background: var(--pop); box-shadow: 0 0 0 2px var(--panel); }
+.main { background-color: var(--canvas); background-image: radial-gradient(color-mix(in srgb, var(--line2) 70%, transparent) 1px, transparent 1px); background-size: 18px 18px; }
+.left, .right, .foot, .phead, .top { background: var(--panel); }
+.listhead, .slidebar { border-bottom-color: var(--line); }
+
+/* --- Nút: chính = viên thuốc tím (Nexus) có bóng mềm; phụ = viền zinc --- */
+.primary { border-radius: var(--r-pill); padding: 0 14px; background: var(--accent); box-shadow: 0 1px 2px rgba(77,47,218,.25), inset 0 1px 0 rgba(255,255,255,.14); font-weight: 600; }
+.primary:hover:not(:disabled) { background: var(--accent2); }
+.primary .badge { border-radius: var(--r-pill); padding: 1px 6px; background: rgba(255,255,255,.2); }
+.primary.sm { padding: 0 10px; }
+.ghost { border-radius: var(--r-pill); border-color: var(--line); background: var(--panel); font-weight: 500; }
+.ghost:hover { background: var(--soft); border-color: var(--line2); }
+.chip { border-radius: var(--r); border-color: var(--line); }
+.chip:hover { border-color: var(--line2); }
+.gbtn { border-radius: var(--r-pill); font-weight: 500; }
+.gbtn:hover { background: var(--accent-soft); color: var(--accent); }
+.pill { border-color: var(--line); }
+.pill.on, .layouts button.on, .presets button.on, .icons button.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+
+/* --- Ô điều khiển: seg/tabs kiểu Nexus (nền zinc-100, nút chọn trắng có bóng) --- */
+.seg, .tabs { background: var(--soft); border-radius: var(--r); padding: 3px; gap: 2px; }
+.seg button, .tabs button { border-radius: var(--r-sm); }
+.seg button.on, .tabs button.on { background: var(--panel); box-shadow: var(--sh-1); color: var(--text); font-weight: 600; }
+.dark .seg button.on, .dark .tabs button.on { background: #3F3F46; }
+.field, .num { border-radius: var(--r); background: var(--soft); }
+.field:focus, .num:focus-within { border-color: var(--accent); background: var(--panel); box-shadow: 0 0 0 3px var(--accent-soft); }
+.prop.hot { background: var(--accent-soft); box-shadow: 0 0 0 4px var(--accent-soft); border-radius: var(--r-sm); }
+
+/* --- Danh sách slide + cây layer: chọn = nền tím nhạt, viền trái tím --- */
+.item { border-radius: var(--r-lg); }
+.item.on { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+.item.on .meta .idx { color: var(--accent); }
+.thumb { border-radius: var(--r-sm); }
+.litem { border-radius: var(--r); }
+.litem.on { background: var(--accent-soft); }
+.slidewrap { border-radius: 6px; }
+.slidewrap.on { outline-color: var(--accent); }
+
+/* --- Nhóm trong panel phải: tiêu đề đậm, viền mảnh --- */
+.group { border-bottom-color: var(--line); }
+
+/* --- Lớp nổi (menu, popover, bảng màu, chuột phải): bóng mềm Refina, bo 12 --- */
+.cmenu, .issues, .cf-pop, .tmenu { border-radius: var(--r-lg); box-shadow: var(--sh-pop); border-color: var(--line); }
+.cmenu button { border-radius: var(--r-sm); }
+.cmenu button:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent); }
+
+/* --- Hộp thoại: bo 20 (Refina), nền mờ zinc --- */
+.modal { background: rgba(24,24,27,.42); backdrop-filter: blur(3px); }
+.box { border-radius: var(--r-xl); box-shadow: var(--sh-modal); }
+.hd { padding: 16px 20px; }
+.hd-t { font-size: 15px; font-weight: 700; }
+
+/* --- Thông báo nổi: viên thuốc tối, nút Undo vàng Refina --- */
+.toast { border-radius: var(--r-pill); background: #18181B; padding-left: 18px; box-shadow: var(--sh-modal); }
+.toast button { border-radius: var(--r-pill); background: var(--pop); color: #18181B; }
+.toast button:hover { background: #FFF38A; }
+
+/* --- Chân trang: huy hiệu kiểm tra luật store dùng màu Nexus success/warning --- */
+.check.ok { background: #E8FAF0; color: #0E7A3D; } .check.warn { background: #FEF6E0; color: #92400E; }
+.dark .check.ok { background: rgba(18,161,80,.16); color: #74DFA2; } .dark .check.warn { background: rgba(217,119,6,.16); color: #FCD34D; }
+
+/* --- Thẻ template (tab Project style) --- */
+.tcard { border-radius: var(--r-lg); }
+.tthumb { border-radius: var(--r); }
+.samplebar { border-radius: var(--r-lg); background: var(--accent-soft); }
+
+/* --- Khung "thẻ nổi" kiểu Nexus/Refina: 3 cột là thẻ trắng bo 16 nằm trên nền zinc, thanh trên hoà vào nền --- */
+@media (min-width: 900px) {
+  .app { background: var(--bg); }
+  .top { background: var(--bg); border-bottom: 0; }
+  .body { gap: 8px; padding: 0 8px 8px; }
+  .left, .right, .main { border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--sh-1); }
+  .left { overflow: clip; } /* clip (không phải hidden): khung không bị cuộn ngầm, danh sách .list bên trong tự cuộn */
+  .main { overflow: clip; overflow-clip-margin: 400px; } /* bo góc canvas nhưng không cắt bảng kiểm tra luật store bật lên */
+  .foot { border-radius: 0 0 15px 15px; }
+  .phead { border-radius: 15px 15px 0 0; }
+  .top .chip, .top .seg { background: var(--panel); }
+}
+
+/* --- Lưới template 3 cột, chia nhóm Classic / Vivid / Cinematic --- */
+.tgroup { display: grid; gap: 6px; }
+.tgroup + .tgroup { margin-top: 6px; }
+.tgrid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.tcard { padding: 3px 3px 5px; font-size: 11px; gap: 4px; }
+.tcard > span { padding: 0 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tthumb { height: 54px; }
+.tslide b { font-size: 9.5px; padding: 0 2px; }
+.tslide i { height: 28px; }

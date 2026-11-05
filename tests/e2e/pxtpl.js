@@ -17,14 +17,14 @@ const { chromium } = require('playwright');
   const bg0 = await bgOf();
   // Chiều ngang thẻ: không tràn panel
   res.overflow = await pg.evaluate(() => [...document.querySelectorAll('.tcard, .tgrid')].filter((e) => e.scrollWidth > e.clientWidth + 1).length);
-  for (const name of ['Minimal', 'Bold', 'Dark', 'Playful']) {
+  for (const name of ['Minimal', 'Bold', 'Dark', 'Playful', 'Candy', 'Editorial', 'Neon Dusk', 'Olive Noir']) {
     await pg.click(`.tcard:has-text("${name}")`); await pg.waitForTimeout(350);
     res[name] = { on: await pg.locator('.tcard.on').innerText().catch(() => ''), toast: await pg.locator('.toast').innerText().catch(() => ''), bg: (await bgOf()).slice(0, 70) };
     await pg.screenshot({ path: `/home/namcuong/apps/pixstall-shots/v1/tpl-${name.toLowerCase()}.png` });
   }
   res.ownAfter = await pg.locator('.ownnote').count();
   // Undo 4 lần → về style ban đầu (kể cả style riêng slide 1)
-  for (let i = 0; i < 4; i++) { await pg.keyboard.press('Control+z'); await pg.waitForTimeout(150); }
+  for (let i = 0; i < 8; i++) { await pg.keyboard.press('Control+z'); await pg.waitForTimeout(150); }
   res.undoBack = (await bgOf()) === bg0; res.ownUndo = await pg.locator('.ownnote').count();
   // Sửa 1 thông số sau khi áp → thẻ hết "on"
   await pg.click('.tcard:has-text("Dark")'); await pg.waitForTimeout(200);

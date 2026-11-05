@@ -31,7 +31,7 @@ const fs = require('fs');
   r.afterDel = { tree: await tree(), toast: await pg.$eval('.toast', e=>e.innerText).catch(()=>null) };
   await pg.click('.toast button'); await pg.waitForTimeout(150); r.afterUndo = await tree();
   // thêm badge
-  await pg.click('.lchildren .ladd'); await pg.waitForTimeout(150);
+  await pg.locator('.lchildren .ladd').scrollIntoViewIfNeeded(); await pg.waitForTimeout(150); await pg.click('.lchildren .ladd'); await pg.waitForTimeout(150);
   r.addMenu = await pg.$$eval('.cmenu button', a=>a.map(x=>x.innerText+(x.disabled?'[x]':'')));
   await pg.click('.cmenu button:has-text("Badge")'); await pg.waitForTimeout(250);
   r.badge = { crumb: await crumb(), tree: await tree() };

@@ -22,7 +22,7 @@ import type { CanvasPick, LayerPick } from "./SlideCanvas";
 import { isLayer, isHidden, layersOf, layerName as nameOf, extraOf, extraText, patchExtra, posOf, withPos, featText, setFeatText, fLayersOf, fIsHidden, fRemovable, fLayerName, phoneIdx, phoneOf, setPhone, phoneCount as phoneCountOf, type LayerId } from "@/lib/layers";
 import { imgSrc, imgMeta, putImage } from "@/lib/images";
 import { ASPECT } from "./Device";
-import { TEMPLATES, activeTemplate, applyTemplate, type Template } from "@/lib/templates";
+import { TEMPLATES, TPL_GROUPS, activeTemplate, applyTemplate, type Template } from "@/lib/templates";
 import { panRange, screenRatio, featureShot } from "./SlideCanvas";
 import { layerIcon } from "./SlideList";
 
@@ -244,14 +244,19 @@ function TemplateGroup({ t, onApply }: { t: Theme; onApply: (tpl: Template) => v
   const on = activeTemplate(t);
   return (
     <Group id="st-tpl" title="Templates">
-      <div className="tgrid">
-        {TEMPLATES.map((x) => (
-          <button key={x.id} className={`tcard ${on === x.id ? "on" : ""}`} title={x.desc} aria-label={`Apply ${x.name} template`} aria-pressed={on === x.id} onClick={() => onApply(x)}>
-            <TplThumb t={x.theme} />
-            <span>{x.name}</span>
-          </button>
-        ))}
-      </div>
+      {TPL_GROUPS.map((g) => (
+        <div key={g.id} className="tgroup">
+          <div className="sublab">{g.label}</div>
+          <div className="tgrid">
+            {TEMPLATES.filter((x) => x.group === g.id).map((x) => (
+              <button key={x.id} className={`tcard ${on === x.id ? "on" : ""}`} title={x.desc} aria-label={`Apply ${x.name} template`} aria-pressed={on === x.id} onClick={() => onApply(x)}>
+                <TplThumb t={x.theme} />
+                <span>{x.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
       <p className="hint">Changes frame, background &amp; type on every slide. Text, images and layouts stay.</p>
     </Group>
   );

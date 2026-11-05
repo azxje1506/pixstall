@@ -33,6 +33,7 @@ export const FONTS: Record<string, string> = {
   Inter: `var(--font-inter), ${CJK}`,
   "Plus Jakarta Sans": `var(--font-jakarta), ${CJK}`,
   "Space Grotesk": `var(--font-grotesk), ${CJK}`,
+  Nunito: `var(--font-nunito), ${CJK}`,
   "DM Serif Display": `var(--font-serif), "Hiragino Mincho ProN", "Yu Mincho", serif`,
 };
 
