@@ -10,16 +10,17 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ImageUp, CopyPlus, ImageOff, RotateCcw, Smartphone, EyeOff, Eye, TextAlignStart, TextAlignCenter, Sun, Moon, Type,
   PanelBottom, ArrowDownToLine, Copy, MoveRight, CopyCheck, ChevronRight, Frame, Highlighter, Plus, Trash2, Crop, Link2, Languages, Columns2, AlignCenter, GalleryHorizontalEnd, Image as ImageIcon } from "lucide-react";
-import type { Project, Slide, Theme, ThemeKey, Feature, Layout, Tilt3D, FrameStyle, FrameColor, Bg, TextItem, ImgFit, PhoneCfg } from "@/lib/types";
-import { FONTS, FRAME_COLORS, GRADIENTS, TILT_PRESETS, DEFAULT_THEME, LOCALES } from "@/lib/presets";
-import { textOf, themeOf, plain, allSizes, imgFor } from "@/lib/rules";
+import type { Deco, Project, Slide, Theme, ThemeKey, Feature, Layout, Tilt3D, FrameStyle, FrameColor, Bg, TextItem, ImgFit, PhoneCfg } from "@/lib/types";
+import { FONTS, FRAME_COLORS, GRADIENTS, TILT_PRESETS, DEFAULT_THEME, LOCALES, uid } from "@/lib/presets";
+import { DECOS, DECO_GROUPS, decoDef, decoColor, decoSize } from "@/lib/decos";
+import { textOf, themeOf, plain, allSizes, imgFor, currentSize } from "@/lib/rules";
 import { mockScreen } from "@/lib/mocks";
 import { FEATURE_ICONS } from "./icons";
 import { Seg, Slider, Group, Num, Prop, Tabs } from "./ui";
 import { ColorField } from "./ColorField";
 import { MenuButton, type MenuItem } from "./Popover";
 import type { CanvasPick, LayerPick } from "./SlideCanvas";
-import { isLayer, isHidden, layersOf, layerName as nameOf, extraOf, extraText, patchExtra, posOf, withPos, featText, setFeatText, fLayersOf, fIsHidden, fRemovable, fLayerName, phoneIdx, phoneOf, setPhone, phoneCount as phoneCountOf, type LayerId } from "@/lib/layers";
+import { isLayer, isDeco, decoOf, patchDeco, isHidden, layersOf, layerName as nameOf, extraOf, extraText, patchExtra, posOf, withPos, featText, setFeatText, fLayersOf, fIsHidden, fRemovable, fLayerName, phoneIdx, phoneOf, setPhone, phoneCount as phoneCountOf, type LayerId } from "@/lib/layers";
 import { imgSrc, imgMeta, putImage } from "@/lib/images";
 import { ASPECT } from "./Device";
 import { TEMPLATES, TPL_GROUPS, activeTemplate, applyTemplate, type Template } from "@/lib/templates";
@@ -42,7 +43,7 @@ const BG_HINT: Record<Bg, string> = {
   color: "Solid color on every slide.",
   gradient: "Same gradient on each slide.",
   panorama: "One background flows across all slides — seamless when users swipe.",
-  blur: "Each screenshot becomes its own blurred backdrop (upload images to see it).",
+  blur: "Each slide uses its own screenshot, enlarged and blurred, tinted with your two colors.",
 };
 
 
@@ -222,6 +223,20 @@ function LayerList({ rows, onPick, onToggle, addItems }: { rows: { id: LayerId; 
       </div>
     </Group>
   );
+}
+
+// --- Kho hình trang trí: lưới thẻ xem trước trên nền slide (c1→c2) để hình trắng vẫn thấy; bấm = thêm / đổi hình ---
+function DecoGrid({ t, on, onPick, groups = true }: { t: Theme; on?: string; onPick: (kind: string) => void; groups?: boolean }) {
+  const bg = t.bg === "color" ? t.solid : `linear-gradient(160deg,${t.c1},${t.c2})`;
+  const tile = (d: (typeof DECOS)[number]) => (
+    <button key={d.id} className={`dtile ${on === d.id ? "on" : ""}`} title={d.name} aria-label={`${on ? "Change to" : "Add"} ${d.name}`} onClick={() => onPick(d.id)} style={{ background: bg }}>
+      <span style={{ width: d.ar < 0.5 ? "80%" : "62%", aspectRatio: `${1 / d.ar}` }} dangerouslySetInnerHTML={{ __html: d.svg(decoColor(d.def, t), decoColor(d.def2 ?? "white", t)) }} />
+    </button>
+  );
+  if (!groups) return <div className="dgrid">{DECOS.map(tile)}</div>;
+  return <>{DECO_GROUPS.map((g) => (
+    <div key={g.id} className="tgroup"><div className="sublab">{g.label}</div><div className="dgrid">{DECOS.filter((d) => d.group === g.id).map(tile)}</div></div>
+  ))}</>;
 }
 
 // --- Template mẫu: thẻ xem trước (nền + máy + chữ thu nhỏ), bấm = áp cả bộ style ---
@@ -577,6 +592,7 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
   const hiddenNow = layer ? isHidden(s, layer) : false;
   const twDef = s.layout === "offset" ? 62 : 84;
   const ex = layer ? extraOf(s, layer) : undefined;
+  const dc = layer && isDeco(layer) ? decoOf(s, layer) : undefined;
   const [lx, ly] = layer === "title" ? [s.tx, s.ty] : layer === "sub" ? [s.sx, s.sy] : layer === "device" ? [s.dx, s.dy] : layer === "device2" ? [s.bx, s.by] : [0, 0];
   const moved = layer && !ex ? !!(lx || ly) : !layer && !!(s.dx || s.dy || s.tx || s.ty || s.sx || s.sy);
   const resetPos = () => setSlide(layer === "title" ? { tx: 0, ty: 0 } : layer === "sub" ? { sx: 0, sy: 0 } : layer === "device" ? { dx: 0, dy: 0 } : layer === "device2" ? { bx: 0, by: 0 } : { dx: 0, dy: 0, tx: 0, ty: 0, sx: 0, sy: 0, bx: 0, by: 0 });
@@ -639,6 +655,35 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
       </Group>
       <TypeGroup sc={slideScope} />
     </>;
+  } else if (dc && layer) {
+    const def = decoDef(dc.kind), th = slideScope.t;
+    const setD = (patch: Partial<Deco>, tag?: string) => setSlide(patchDeco(s, layer, patch), tag);
+    body = <>
+      {hidNote}
+      <Group id="s-deco" title="Shape" right={<span className="mono">{def.name}</span>}>
+        <DecoGrid t={th} on={dc.kind} groups={false} onPick={(kind) => setD({ kind })} />
+      </Group>
+      <Group id="s-deco-style" title="Style" right={(dc.color || dc.color2) ? <button className="gbtn" onClick={() => setD({ color: undefined, color2: undefined })}><RotateCcw />Theme colors</button> : undefined}>
+        <Prop label="Color"><ColorField label="Decoration color" value={dc.color || decoColor(def.def, th)} onChange={(color) => setD({ color }, "dcol")} /></Prop>
+        {def.def2 && <Prop label="Color 2"><ColorField label="Second color" value={dc.color2 || decoColor(def.def2, th)} onChange={(color2) => setD({ color2 }, "dcol2")} /></Prop>}
+        <Slider label="Size" value={dc.size} min={4} max={140} onChange={(size) => setD({ size }, "dsize")} />
+        <Slider label="Rotate" value={dc.rot ?? 0} min={-180} max={180} unit="°" onChange={(rot) => setD({ rot }, "drot")} />
+        <Slider label="Opacity" value={Math.round((dc.opacity ?? 1) * 100)} min={10} max={100} unit="%" onChange={(v) => setD({ opacity: v / 100 }, "dop")} />
+        <Prop label="Position">
+          <Num prefix="X" value={dc.x} step={0.5} onChange={(x) => setD({ x }, "dx")} />
+          <Num prefix="Y" value={dc.y} step={0.5} onChange={(y) => setD({ y }, "dy")} />
+        </Prop>
+        <Prop stack label="Layer">
+          <Seg full value={dc.front ? "front" : "back"} onChange={(v: string) => setD({ front: v === "front" })} options={[{ v: "back", label: "Behind device" }, { v: "front", label: "On top" }]} />
+        </Prop>
+      </Group>
+      <div className="group">
+        <button className="ghost sm" onClick={() => {
+          update((d) => ({ ...d, slides: d.slides.map((x, i) => (i === sel ? x : { ...x, decos: [...(x.decos ?? []), { ...dc, id: uid(), tpl: false }] })) }));
+          onFlash(`${def.name} added to every slide`, true);
+        }}><CopyCheck />Copy to all slides</button>
+      </div>
+    </>;
   } else if (ex && layer) {
     body = <>{hidNote}{extraPanel(ex, (patch, tag) => setSlide(patchExtra(s, layer, patch), tag), slideScope.t)}</>;
   } else if (layer === "device") body = <>
@@ -691,6 +736,15 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
   else body = <>
     <LayerList onPick={onPickLayer} onToggle={onToggleHidden} addItems={addItems}
       rows={layersOf(s, p.loc, nextNo).map((l) => ({ ...l, hidden: isHidden(s, l.id) }))} />
+    <Group id="s-decor" title="Decorations">
+      <DecoGrid t={slideScope.t} onPick={(kind) => {
+        const def = decoDef(kind), z = currentSize(p), hEm = (100 * z.h) / z.w, id = uid(), n = (s.decos ?? []).length;
+        const d: Deco = { id, kind, size: decoSize(def), x: 80 - (n % 3) * 30, y: Math.round(hEm * 0.12 + (n % 2) * 6), rot: 0 };
+        setSlide({ decos: [...(s.decos ?? []), d] });
+        onPickLayer(`d:${id}`);
+      }} />
+      <p className="hint">Click to add. Drag on the canvas to move; select it to recolor, resize or rotate. Templates add their own set.</p>
+    </Group>
     <Group id="s-layout" title="Layout" right={<ApplyAll onClick={() => applyAll({ layout: s.layout }, "Layout")} />}>
       <div className="layouts">
         {LAYOUTS.map((l) => (

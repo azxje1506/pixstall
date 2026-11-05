@@ -1,15 +1,22 @@
 // Layer trên một slide / feature graphic: id, tên hiển thị, vị trí (để kéo & nhích phím), ẩn/hiện, thêm/xoá layer chữ
-// Id layer: "title" (Headline) · "sub" (Subtitle) · "device" · "device2" (máy thứ 2, chỉ layout Duo) · "x:<id>" (chữ tự do)
+// Id layer: "title" (Headline) · "sub" (Subtitle) · "device" · "device2" (máy thứ 2, chỉ layout Duo) · "x:<id>" (chữ tự do) · "d:<id>" (hình trang trí, chỉ slide)
 // Feature graphic: "icon" · "title" (tên app) · "sub" (tagline) · "x:<id>" · "device"/"device2"/"device3" (máy 1/2/3) — hàm f*
 // posOf / withPos tự nhận ra slide hay feature (isFeat)
-import type { Feature, PhoneCfg, Slide, TextItem } from "./types";
+import type { Deco, Feature, PhoneCfg, Slide, TextItem } from "./types";
+import { decoDef } from "./decos";
 import { textOf, plain } from "./rules";
 
-export type LayerId = "title" | "sub" | "icon" | "device" | "device2" | "device3" | `x:${string}`;
+export type LayerId = "title" | "sub" | "icon" | "device" | "device2" | "device3" | `x:${string}` | `d:${string}`;
 const IDS = ["title", "sub", "icon", "device", "device2", "device3"];
-export const isLayer = (v: unknown): v is LayerId => typeof v === "string" && (IDS.includes(v) || v.startsWith("x:"));
+export const isLayer = (v: unknown): v is LayerId => typeof v === "string" && (IDS.includes(v) || v.startsWith("x:") || v.startsWith("d:"));
 export const isDevice = (l: LayerId | null | undefined) => l === "device" || l === "device2" || l === "device3";
-export const isText = (l: LayerId | null | undefined) => !!l && !isDevice(l);
+export const isDeco = (l: LayerId | null | undefined) => !!l && l.startsWith("d:");
+export const isText = (l: LayerId | null | undefined) => !!l && !isDevice(l) && !isDeco(l);
+export const decoOf = (s: { decos?: Deco[] }, l: LayerId): Deco | undefined => (isDeco(l) ? s.decos?.find((d) => d.id === l.slice(2)) : undefined);
+export function patchDeco(s: { decos?: Deco[] }, l: LayerId, patch: Partial<Deco>): { decos: Deco[] } {
+  const id = l.slice(2);
+  return { decos: (s.decos ?? []).map((d) => (d.id === id ? { ...d, ...patch, tpl: false } : d)) }; // sửa tay → không còn là hình của template
+}
 export const extraId = (l: LayerId) => (l.startsWith("x:") ? l.slice(2) : null);
 type Holder = { extras?: TextItem[] };
 export const extraOf = (s: Holder, l: LayerId): TextItem | undefined => { const id = extraId(l); return id ? s.extras?.find((x) => x.id === id) : undefined; };
@@ -23,6 +30,8 @@ export function posOf(s: Slide | Feature, l: LayerId): [number, number] {
   const sl = s as Slide;
   if (l === "device2") return [sl.bx ?? 0, sl.by ?? 0];
   if (l === "sub") return [sl.sx ?? 0, sl.sy ?? 0];
+  const dc = decoOf(sl, l);
+  if (dc) return [dc.x, dc.y];
   const x = extraOf(sl, l);
   return x ? [x.x, x.y] : [0, 0];
 }
@@ -34,6 +43,7 @@ export function withPos(s: Slide | Feature, l: LayerId, x: number, y: number): R
   if (l === "title") return { tx: x, ty: y };
   if (l === "sub") return { sx: x, sy: y };
   if (l === "device2") return { bx: x, by: y };
+  if (isDeco(l)) return patchDeco(s as Slide, l, { x, y });
   const id = extraId(l), sl = s as Slide;
   return { extras: (sl.extras ?? []).map((e) => (e.id === id ? { ...e, x, y } : e)) };
 }
@@ -43,11 +53,12 @@ export function patchExtra(s: Holder, l: LayerId, patch: Partial<TextItem>): { e
   return { extras: (s.extras ?? []).map((e) => (e.id === id ? { ...e, ...patch } : e)) };
 }
 
-const fixed = (l: LayerId): l is "title" | "sub" | "device" | "device2" => !l.startsWith("x:") && l !== "icon" && l !== "device3";
-export const isHidden = (s: Slide, l: LayerId) => (fixed(l) ? !!s.hidden?.[l] : !!extraOf(s, l)?.hidden);
+const fixed = (l: LayerId): l is "title" | "sub" | "device" | "device2" => !l.startsWith("x:") && !l.startsWith("d:") && l !== "icon" && l !== "device3";
+export const isHidden = (s: Slide, l: LayerId) => (fixed(l) ? !!s.hidden?.[l] : isDeco(l) ? !!decoOf(s, l)?.hidden : !!extraOf(s, l)?.hidden);
 
 export function toggleHidden(s: Slide, l: LayerId): Partial<Slide> {
   if (fixed(l)) return { hidden: { ...s.hidden, [l]: !s.hidden?.[l] } };
+  if (isDeco(l)) return patchDeco(s, l, { hidden: !decoOf(s, l)?.hidden });
   return patchExtra(s, l, { hidden: !extraOf(s, l)?.hidden });
 }
 
@@ -59,12 +70,13 @@ export function layersOf(s: Slide, loc: string, next?: number): { id: LayerId; n
   if (title) out.push({ id: "title", name: "Headline", sub: plain(title) });
   if (sub) out.push({ id: "sub", name: "Subtitle", sub: plain(sub) });
   for (const x of s.extras ?? []) out.push({ id: `x:${x.id}`, name: x.pill ? "Badge" : "Text", sub: plain(extraText(x, loc)) || "—" });
+  for (const d of s.decos ?? []) out.push({ id: `d:${d.id}`, name: decoDef(d.kind).name, sub: d.front ? "Decoration · on top" : "Decoration" });
   out.push({ id: "device", name: "Device", sub: s.img ? "Screenshot" : "Sample" });
   if (s.layout === "duo") out.push({ id: "device2", name: "Device 2", sub: s.img2 ? "Own screenshot" : `Linked · slide ${String(next ?? 0).padStart(2, "0")}` });
   return out;
 }
 
-export const layerName = (s: Slide, l: LayerId) => l === "title" ? "Headline" : l === "sub" ? "Subtitle" : l === "device" ? "Device" : l === "device2" ? "Device 2" : extraOf(s, l)?.pill ? "Badge" : "Text";
+export const layerName = (s: Slide, l: LayerId) => l === "title" ? "Headline" : l === "sub" ? "Subtitle" : l === "device" ? "Device" : l === "device2" ? "Device 2" : isDeco(l) ? decoDef(decoOf(s, l)?.kind ?? "").name : extraOf(s, l)?.pill ? "Badge" : "Text";
 
 // Xoá layer chữ: title/sub = xoá nội dung ở MỌI ngôn ngữ; chữ tự do = bỏ khỏi extras. Device không xoá được (ẩn thôi)
 export function removeLayer(s: Slide, l: LayerId): Partial<Slide> | null {
@@ -74,6 +86,7 @@ export function removeLayer(s: Slide, l: LayerId): Partial<Slide> | null {
     for (const [loc, v] of Object.entries(s.t)) { const c = [...v] as [string, string]; c[k] = ""; t[loc] = c; }
     return { t };
   }
+  if (isDeco(l)) return { decos: (s.decos ?? []).filter((d) => d.id !== l.slice(2)) };
   const id = extraId(l);
   return { extras: (s.extras ?? []).filter((e) => e.id !== id) };
 }

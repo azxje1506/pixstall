@@ -6,7 +6,7 @@
 // với canvas), mắt để ẩn, thùng rác để xoá layer chữ, rê chuột để viền layer trên canvas; dòng cuối "+ Add text" mở menu thêm chữ
 // Thumbnail nằm trong khung CỐ ĐỊNH 40×64 px, slide được co vừa (contain) → hàng nào cũng cao bằng nhau dù iPhone hay iPad
 import { useState, type ReactNode } from "react";
-import { GripVertical, Trash2, Plus, CopyPlus, ImageUp, Upload, Image as ImageIcon, ChevronRight, Type, Smartphone, Eye, EyeOff, Heading, Pilcrow, Tag } from "lucide-react";
+import { GripVertical, Trash2, Plus, CopyPlus, ImageUp, Upload, Image as ImageIcon, ChevronRight, Type, Smartphone, Eye, EyeOff, Heading, Pilcrow, Tag, Sparkles } from "lucide-react";
 import { layersOf, isHidden, fLayersOf, fIsHidden, fRemovable, type LayerId } from "@/lib/layers";
 import { featureShot } from "./SlideCanvas";
 import { MenuButton, type MenuItem } from "./Popover";
@@ -41,7 +41,7 @@ interface Props {
 
 // Icon theo loại layer
 export const layerIcon = (id: LayerId, name: string): ReactNode =>
-  id.startsWith("device") ? <Smartphone /> : id === "icon" ? <ImageIcon /> : id === "title" ? <Heading /> : id === "sub" ? <Pilcrow /> : name === "Badge" ? <Tag /> : <Type />;
+  id.startsWith("device") ? <Smartphone /> : id.startsWith("d:") ? <Sparkles /> : id === "icon" ? <ImageIcon /> : id === "title" ? <Heading /> : id === "sub" ? <Pilcrow /> : name === "Badge" ? <Tag /> : <Type />;
 
 // Hàng layer con (thụt vào dưới slide/feature)
 function LayerRow({ icon, name, sub, on, hidden, onClick, onToggle, onHover, onRemove }: { icon: ReactNode; name: string; sub: string; on: boolean; hidden?: boolean; onClick: () => void; onToggle?: () => void; onHover: (v: boolean) => void; onRemove?: () => void }) {

@@ -19,7 +19,7 @@ import type { CanvasPick, LayerPick } from "./SlideCanvas";
 import { ContextMenu, type MenuItem } from "./Popover";
 import { putImage } from "@/lib/images";
 import { FilePlus2, FolderOpen, Save, Crop, CopyPlus, Trash2, ImageUp, RotateCcw, BringToFront, SendToBack, Heading, Type, Pilcrow, Tag } from "lucide-react";
-import { isFeat, fToggleHidden, fRemoveLayer, fLayerName, fCanAdd, setFeatText, phoneIdx, phoneOf, nameOfLayer, isLayer, isText, isDevice, posOf, withPos, toggleHidden as toggleH, removeLayer, layerName, canAdd, type LayerId } from "@/lib/layers";
+import { isFeat, fToggleHidden, fRemoveLayer, fLayerName, fCanAdd, setFeatText, phoneIdx, phoneOf, nameOfLayer, isLayer, isText, isDeco, isDevice, posOf, withPos, toggleHidden as toggleH, removeLayer, layerName, canAdd, type LayerId } from "@/lib/layers";
 import { currentSize, themeOf, textOf } from "@/lib/rules";
 
 // Ảnh tải lên → kho ảnh (thu nhỏ nếu >4000px), trả "img:<id>"; file hỏng thì bỏ qua
@@ -192,7 +192,7 @@ export default function Editor() {
       // Esc lùi 1 cấp: layer → slide → không chọn (đang gõ chữ thì ô chữ tự xử lý Esc)
       if (e.key === "Escape") { if (crop) return setCrop(null); return setPick((x) => (isLayer(x) ? "slide" : null)); }
       // Delete / Backspace: xoá layer chữ đang chọn
-      if ((e.key === "Delete" || e.key === "Backspace") && isText(isLayer(pick) ? pick : null)) { e.preventDefault(); removeAt(tab === "feature" ? -1 : idx, pick as LayerId); return; }
+      if ((e.key === "Delete" || e.key === "Backspace") && (isText(isLayer(pick) ? pick : null) || isDeco(isLayer(pick) ? pick : null))) { e.preventDefault(); removeAt(tab === "feature" ? -1 : idx, pick as LayerId); return; }
       const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
       if (!dir) return;
       if (isLayer(pick)) {

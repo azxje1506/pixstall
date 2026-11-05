@@ -127,3 +127,20 @@ body { font-family: var(--font-ui), var(--font-inter), system-ui, sans-serif; fo
 .tthumb { height: 54px; }
 .tslide b { font-size: 9.5px; padding: 0 2px; }
 .tslide i { height: 28px; }
+
+/* --- Hover menu: chữ + icon + phím tắt cùng màu nhấn trên nền tím nhạt (globals cũ để trắng → mất chữ trên nền nhạt) --- */
+.cmenu button:hover:not(:disabled), .mlist button:focus-visible { background: var(--accent-soft); color: var(--accent); }
+.cmenu button:hover:not(:disabled) kbd, .cmenu button:hover:not(:disabled) .cico, .cmenu button:hover:not(:disabled) svg,
+.mlist button:focus-visible kbd, .mlist button:focus-visible .cico, .mlist button:focus-visible svg { color: var(--accent); }
+.cmenu button.danger:hover:not(:disabled), .mlist button.danger:focus-visible { background: #FEE2E2; color: #DC2626; }
+.cmenu button.danger:hover:not(:disabled) .cico, .cmenu button.danger:hover:not(:disabled) svg { color: #DC2626; }
+.dark .cmenu button.danger:hover:not(:disabled), .dark .mlist button.danger:focus-visible { background: rgba(220,38,38,.18); color: #F87171; }
+.dark .cmenu button.danger:hover:not(:disabled) .cico, .dark .cmenu button.danger:hover:not(:disabled) svg { color: #F87171; }
+
+/* --- Kho hình trang trí: lưới 5 cột thẻ vuông nền slide --- */
+.dgrid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; }
+.dtile { aspect-ratio: 1; border-radius: var(--r); display: grid; place-items: center; box-shadow: inset 0 0 0 1px rgba(0,0,0,.06); transition: transform .12s, box-shadow .12s; }
+.dtile:hover { transform: translateY(-1px); box-shadow: inset 0 0 0 1px rgba(0,0,0,.06), var(--sh-1); }
+.dtile.on { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--accent); }
+.dtile span { display: block; max-height: 80%; }
+.dtile svg { pointer-events: none; }

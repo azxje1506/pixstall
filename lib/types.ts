@@ -40,6 +40,7 @@ export interface Slide extends Tilt3D {
   tx?: number; ty?: number; // tiêu đề (Headline)
   sx?: number; sy?: number; // phụ đề (Subtitle)
   extras?: TextItem[]; // layer chữ tự do
+  decos?: Deco[]; // hình trang trí (layer "d:<id>")
   front?: "text" | "device"; // phần nào nằm trên (mặc định chữ trên máy)
   hidden?: { title?: boolean; sub?: boolean; device?: boolean; device2?: boolean; text?: boolean }; // ẩn layer (cả lúc xuất); text = bản cũ, tự chuyển khi nạp
   override?: Partial<Theme>; // style riêng của slide này, đè lên Project style
@@ -90,6 +91,10 @@ export interface TextItem {
   pill?: boolean; // dạng nhãn viên thuốc (nền = màu tô)
   hidden?: boolean;
 }
+
+// Hình trang trí (kho lib/decos.ts): tâm x,y (em), rộng size (em), xoay rot (độ); màu thiếu = theo theme
+// front = nằm trên máy và chữ (mặc định nằm dưới); tpl = do template thêm (áp template khác sẽ thay bộ này)
+export interface Deco { id: string; kind: string; x: number; y: number; size: number; rot?: number; color?: string; color2?: string; opacity?: number; front?: boolean; hidden?: boolean; tpl?: boolean }
 
 // Các khoá theme được phép đè riêng từng slide (khung máy, nền, chữ)
 export type ThemeKey = keyof Theme;

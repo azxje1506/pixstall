@@ -12,7 +12,8 @@ import { createPortal } from "react-dom";
 import type { CSSProperties, ReactNode, PointerEvent as RPE, KeyboardEvent as RKE, FocusEvent as RFE } from "react";
 import { Highlighter } from "lucide-react";
 import { FEATURE_ICONS } from "./icons";
-import type { Project, SizePreset, Theme, TextItem } from "@/lib/types";
+import type { Project, SizePreset, Theme, TextItem, Deco } from "@/lib/types";
+import { decoDef, decoColor } from "@/lib/decos";
 import { FONTS, FEATURE_SIZE } from "@/lib/presets";
 import { textOf, themeOf, richParts, imgFor } from "@/lib/rules";
 import { posOf, withPos, patchExtra, extraText, isDevice, isLayer, featText, setFeatText, phoneOf, phoneIdx, setPhone, PHONE_IDS, type LayerId } from "@/lib/layers";
@@ -24,7 +25,8 @@ import { Device, ASPECT } from "./Device";
 // Nền slide; panorama = một nền dài n slide, slide i lấy khúc thứ i → lướt store thấy liền mạch
 function background(t: Theme, i: number, hEm: number, n: number): CSSProperties {
   if (t.bg === "color") return { background: t.solid };
-  if (t.bg === "gradient" || t.bg === "blur") return { background: `linear-gradient(165deg,${t.c1},${t.c2})` };
+  if (t.bg === "gradient") return { background: `linear-gradient(165deg,${t.c1},${t.c2})` };
+  if (t.bg === "blur") return { background: t.c1 }; // nền lót; lớp ảnh mờ vẽ trong BlurBackdrop
   return {
     backgroundImage: `radial-gradient(circle at 18% 22%,${t.c2} 0,transparent 22%),radial-gradient(circle at 52% 80%,${t.c2}cc 0,transparent 26%),radial-gradient(circle at 84% 30%,#ffffff55 0,transparent 18%),linear-gradient(100deg,${t.c1},${t.c2} 50%,${t.c1})`,
     backgroundSize: `${100 * n}em ${hEm}em`,
@@ -245,7 +247,7 @@ function useEditKit(edit: CanvasEdit | undefined, k: number, hEm: number, pos: (
     const near = others.sort((a, b) => Math.hypot((a.l + a.r) / 2 - cc[0], (a.t + a.b) / 2 - cc[1]) - Math.hypot((b.l + b.r) / 2 - cc[0], (b.t + b.b) / 2 - cc[1]))[0];
     const tx = [8, 50, 92, ...others.flatMap((o) => [o.l, (o.l + o.r) / 2, o.r])];
     const ty = [hEm / 2, ...others.flatMap((o) => [o.t, (o.t + o.b) / 2, o.b])];
-    const [bx, by] = pos(what), free = what.startsWith("x:");
+    const [bx, by] = pos(what), free = what.startsWith("x:") || what.startsWith("d:");
     startDrag(e, k, (mx, my) => {
       const ng: Guides = {};
       const sx = bestSnap([r0.l + mx, cc[0] + mx, r0.r + mx], tx);
@@ -367,6 +369,38 @@ function renderExtras(items: TextItem[] | undefined, L: string, t: Theme, ink: s
   });
 }
 
+// Hình trang trí: tâm (x,y) em, rộng size em, xoay rot; nằm dưới máy (z 1) hoặc trên cùng (z 5) khi front
+function renderDecos(items: Deco[] | undefined, front: boolean, t: Theme, kit: Kit) {
+  return (items ?? []).filter((d) => !!d.front === front).map((d) => {
+    const def = decoDef(d.kind), c = d.color || decoColor(def.def, t), c2 = d.color2 || decoColor(def.def2 ?? "white", t);
+    return (
+      <div key={d.id} {...kit.hit(`d:${d.id}` as LayerId)} style={{ position: "absolute", left: `${d.x}em`, top: `${d.y}em`, width: `${d.size}em`, height: `${d.size * def.ar}em`,
+        transform: `translate(-50%,-50%) rotate(${d.rot ?? 0}deg)`, zIndex: front ? 5 : 1, opacity: d.opacity ?? 1, ...(d.hidden ? { visibility: "hidden" as const } : {}) }}>
+        <div style={{ width: "100%", height: "100%", pointerEvents: "none" }} dangerouslySetInnerHTML={{ __html: def.svg(c, c2) }} />
+      </div>
+    );
+  });
+}
+
+// Nền Blur: chính màn hình của slide phóng to + làm mờ + tăng bão hoà (khác hẳn gradient), rồi phủ lớp tối và ánh màu c1→c2
+// Chưa có ảnh thì dùng màn mẫu; t.blur = độ mờ, t.overlay = độ tối (%)
+function BlurBackdrop({ t, img, mock, thumb }: { t: Theme; img: string | null | undefined; mock: number; thumb?: boolean }) {
+  const fx: CSSProperties = { position: "absolute", filter: `blur(${Math.max(1, t.blur) * 0.22}em) saturate(1.6)`, transform: "scale(1.15)" };
+  return (
+    <>
+      {img
+        ? <div style={{ ...fx, inset: "-12%", backgroundImage: `url(${imgSrc(img, thumb)})`, backgroundSize: "cover", backgroundPosition: "center" }} />
+        : // fontSize 1.4em → đơn vị bên trong = 1/100 bề ngang khối 140% slide, đúng quy ước của .mk
+          <div style={{ ...fx, fontSize: "1.4em", left: "-14.3em", top: "-10%", width: "100em", height: "120%", overflow: "hidden", background: "#fff" }}>
+            <div style={{ position: "absolute", inset: 0 }} dangerouslySetInnerHTML={{ __html: mockScreen(mock) }} />
+          </div>}
+      <div style={{ position: "absolute", inset: 0, background: `linear-gradient(165deg,${t.c1}66,${t.c2}55)`, mixBlendMode: "multiply" }} />
+      <div style={{ position: "absolute", inset: 0, background: `rgba(0,0,0,${t.overlay / 100})` }} />
+      <div style={{ position: "absolute", inset: 0, background: "radial-gradient(120% 60% at 50% 0%,rgba(255,255,255,.18),transparent 60%)" }} />
+    </>
+  );
+}
+
 // Tỉ lệ rộng/cao của màn trong máy (trừ viền) theo loại máy + theme
 export const screenRatio = (kind: "phone" | "tablet", t: Theme) => { const bz = t.frame === "none" ? 0 : t.bezel / 100; return (1 - 2 * bz) / (ASPECT[kind] - 2 * bz); };
 // Ảnh của slide i theo ngôn ngữ loc (máy chính, kèm cách căn của slide đó)
@@ -470,12 +504,8 @@ export function SlideCanvas({ p, index, width, size, loc, edit }: { p: Project; 
 
   return (
     <div data-cv ref={cv} {...kit.root} style={{ position: "relative", overflow: "hidden", width, height: (width * size.h) / size.w, fontSize: width / 100, ...background(t, index, hEm, n) }}>
-      {t.bg === "blur" && imgFor(s, L) && (
-        <>
-          <div style={{ position: "absolute", inset: "-10%", backgroundImage: `url(${imgSrc(imgFor(s, L), th)})`, backgroundSize: "cover", backgroundPosition: "center", filter: `blur(${t.blur * 0.12}em)` }} />
-          <div style={{ position: "absolute", inset: 0, background: `rgba(0,0,0,${t.overlay / 100})` }} />
-        </>
-      )}
+      {t.bg === "blur" && <BlurBackdrop t={t} img={imgFor(s, L)} mock={s.mock} thumb={th} />}
+      {renderDecos(s.decos, false, t, kit)}
       {(title || sub) && (
         <div style={block}>
           {title && (
@@ -496,6 +526,7 @@ export function SlideCanvas({ p, index, width, size, loc, edit }: { p: Project; 
       {/* Chữ tự do: đặt theo tâm (x,y); dạng pill thì nền = màu tô, chữ đậm tối */}
       {renderExtras(s.extras, L, t, ink, zText, kit, (x, v) => edit?.onPatch(patchExtra(s, `x:${x.id}` as LayerId, { t: { ...x.t, [L]: v } }), ""))}
       {(duo || !s.hidden?.device) && devices}
+      {renderDecos(s.decos, true, t, kit)}
       {kit.guides}
     </div>
   );

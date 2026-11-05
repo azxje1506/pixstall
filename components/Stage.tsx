@@ -167,8 +167,6 @@ export function Stage({ p, sel, tab, view, onPick, onNav, onFiles, edit, welcome
         onPointerDown={() => edit.onSel(null)}>
         <div className="strip">{content}</div>
       </div>
-      {edges.l && <div className="edgefade l" />}
-      {edges.r && <div className="edgefade r" />}
       {/* Lớp phủ khi kéo file ảnh vào */}
       {over && <div className="dropover"><div><Upload /><b>Drop to add screenshots</b><span>{allSampleHint(p)}</span></div></div>}
       {/* Thẻ chào mừng lần đầu */}
