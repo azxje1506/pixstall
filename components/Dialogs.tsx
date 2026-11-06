@@ -168,6 +168,7 @@ const KEYS: [string, [string, string][]][] = [
   ["General", [["Ctrl S", "Save project to file"], ["Ctrl O", "Open project file"], ["Ctrl Z", "Undo"], ["Ctrl Shift Z", "Redo"], ["Ctrl D", "Duplicate slide"], ["← →", "Previous / next slide"], ["?", "Show shortcuts"]]],
   ["Canvas", [["Click", "Select device or text"], ["Double‑click", "Edit text · enter a group"], ["↑ ↓ ← →", "Nudge selection (Shift = ×4)"], ["Esc", "Deselect · step out of a group"], ["Right‑click", "More actions"]]],
   ["Selection", [["Shift Click", "Add / remove a layer"], ["Drag on background", "Select with a box"], ["Ctrl A", "Select all layers"], ["Ctrl G", "Group selection"], ["Ctrl Shift G", "Ungroup"], ["Delete", "Delete text & decorations"]]],
+  ["Arrange", [["Drag in Layers", "Reorder · drop beside a group's layer to move it in"], ["Ctrl ]", "Bring forward"], ["Ctrl [", "Send backward"], ["Ctrl Shift ]", "Bring to front"], ["Ctrl Shift [", "Send to back"]]],
   ["Align", [["Alt A", "Left"], ["Alt H", "Horizontal center"], ["Alt D", "Right"], ["Alt W", "Top"], ["Alt V", "Vertical center"], ["Alt S", "Bottom"]]],
   ["View", [["Ctrl +/−", "Zoom in / out"], ["Ctrl 0", "Zoom to fit"], ["Ctrl Scroll", "Zoom at cursor"], ["Space Drag", "Pan"]]],
   ["Inspector", [["Drag label", "Scrub the value"], ["Shift Alt", "Faster / finer scrub"], ["↑ ↓", "Step a number field (Shift ×10)"]]],

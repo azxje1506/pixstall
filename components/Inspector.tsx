@@ -21,7 +21,7 @@ import { Seg, Slider, Group, Num, Prop, Tabs } from "./ui";
 import { ColorField } from "./ColorField";
 import { MenuButton, type MenuItem } from "./Popover";
 import type { CanvasPick, LayerPick } from "./SlideCanvas";
-import { isLayer, isDeco, decoOf, patchDeco, centerPatch, isHidden, layersOf, layerName as nameOf, extraOf, extraText, patchExtra, posOf, withPos, featText, setFeatText, fLayersOf, fIsHidden, fRemovable, fLayerName, phoneIdx, phoneOf, setPhone, phoneCount as phoneCountOf, treeOf, groupExact, groupById, expandGroups, makeGroup, ungroup, type LayerId } from "@/lib/layers";
+import { isLayer, isDeco, decoOf, patchDeco, centerPatch, isHidden, layersOf, layerName as nameOf, extraOf, extraText, patchExtra, posOf, withPos, featText, setFeatText, fLayersOf, fIsHidden, fRemovable, fLayerName, phoneIdx, phoneOf, setPhone, phoneCount as phoneCountOf, treeOf, stackOf, zPatch, moveInStack, groupExact, groupById, expandGroups, makeGroup, ungroup, type LayerId } from "@/lib/layers";
 import { imgSrc, imgMeta, putImage } from "@/lib/images";
 import { ASPECT } from "./Device";
 import { TEMPLATES, TPL_GROUPS, activeTemplate, applyTemplate, type Template } from "@/lib/templates";
@@ -806,7 +806,10 @@ export function Inspector({ p, sel, tab, update, pick, multi, onMulti, enter, xr
           <Num prefix="Y" value={dc.y} step={0.5} onChange={(y) => setD({ y }, "dy")} />
         </Prop>
         <Prop stack label="Layer">
-          <Seg full value={dc.front ? "front" : "back"} onChange={(v: string) => setD({ front: v === "front" })} options={[{ v: "back", label: "Behind device" }, { v: "front", label: "On top" }]} />
+          {/* Theo thứ tự lớp thật: nằm trên máy hay dưới máy. On top = lên trên cùng; Behind = ngay dưới máy */}
+          <Seg full value={stackOf(s).indexOf(layer) < stackOf(s).indexOf("device") ? "front" : "back"}
+            onChange={(v: string) => { const f = v === "front"; setSlide({ ...patchDeco(s, layer, { front: f }), ...(f ? zPatch(s, [layer], "front") : moveInStack(s, [layer], { id: "device", after: true }, undefined)) }); }}
+            options={[{ v: "back", label: "Behind device" }, { v: "front", label: "On top" }]} />
         </Prop>
       </Group>
       <div className="group">

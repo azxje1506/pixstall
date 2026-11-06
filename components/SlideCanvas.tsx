@@ -16,7 +16,7 @@ import type { Project, SizePreset, Theme, TextItem, Deco, LayerGroup } from "@/l
 import { decoDef, decoColor } from "@/lib/decos";
 import { FONTS, FEATURE_SIZE } from "@/lib/presets";
 import { textOf, themeOf, richParts, imgFor } from "@/lib/rules";
-import { centerPatch, decoOf, patchDeco, posOf, withPos, posPatch, patchExtra, extraText, isDevice, isLayer, featText, setFeatText, phoneOf, phoneIdx, setPhone, PHONE_IDS, type LayerId } from "@/lib/layers";
+import { centerPatch, decoOf, patchDeco, posOf, withPos, posPatch, zMap, patchExtra, extraText, isDevice, isLayer, featText, setFeatText, phoneOf, phoneIdx, setPhone, PHONE_IDS, type LayerId } from "@/lib/layers";
 import { imgSrc, imgMeta } from "@/lib/images";
 import type { Slide } from "@/lib/types";
 import { mockScreen } from "@/lib/mocks";
@@ -188,7 +188,7 @@ function toggleHL(el: HTMLElement, hl: string) {
 // tf(l) = tay cầm đổi cỡ/xoay của layer máy; crop(l) = [ix, iy] hiện tại nếu layer đó căn ảnh được (null = không)
 function useEditKit(edit: CanvasEdit | undefined, k: number, hEm: number, pos: (l: LayerId) => [number, number], move: (l: LayerId, x: number, y: number) => void,
   tf: (l: LayerId) => Tf | null, pxPerEm: number, crop: (l: LayerId) => CropInfo | null = () => null,
-  moveMany: (items: [LayerId, number, number][]) => void = () => {}, marks?: LayerId[]) {
+  moveMany: (items: [LayerId, number, number][]) => void = () => {}, marks?: LayerId[], ordered = false) {
   const [g, setG] = useState<Guides>({});
   const [editing, setEditing] = useState<string | null>(null); // id dòng chữ đang gõ
   const [bar, setBar] = useState<{ x: number; y: number } | null>(null); // thanh nổi Highlight (toạ độ màn hình)
@@ -245,6 +245,8 @@ function useEditKit(edit: CanvasEdit | undefined, k: number, hEm: number, pos: (
   if (!edit) return { hit: (what: LayerId) => ({ "data-pick": what, className: marks?.includes(what) ? "ed-hit xsel" : "" }), handle: undefined, guides: null, lineOf, root: undefined, grab: undefined };
 
   const many = edit.multi && edit.multi.length > 1 ? edit.multi : null; // đang chọn nhiều layer
+  // Đang chọn đúng 1 nhóm → không viền từng con (chỉ khung bao chung)
+  const gsel = !!many && !!edit.groups?.some((g) => g.ids.length === many.length && g.ids.every((x) => many.includes(x as LayerId)));
   // Kéo cả nhóm: cùng một độ dời cho mọi layer đang chọn, gióng theo khung bao của nhóm.
   // Bấm rồi thả không kéo = chỉ chọn riêng layer đó (giống Figma)
   // onClick = bấm-thả không kéo (thường: thu về chọn riêng layer đó; nhóm: giữ nguyên)
@@ -272,6 +274,29 @@ function useEditKit(edit: CanvasEdit | undefined, k: number, hEm: number, pos: (
   const drag = (e: RPE, what: LayerId) => {
     if (e.button !== 0 || (e.target as HTMLElement).isContentEditable) return;
     e.stopPropagation();
+    // Layer đang chọn bị layer khác che (thứ tự lớp thật, không còn nổi lên khi chọn) → như Figma: vẫn bấm được tay cầm của nó,
+    // và kéo trong vùng của nó thì kéo chính nó (không chọn sang layer phía trên)
+    if (!(e.shiftKey || e.metaKey || e.ctrlKey) && edit.sel !== what && !(many?.includes(what))) {
+      const under = document.elementsFromPoint(e.clientX, e.clientY);
+      const h = under.find((x) => x.matches(".ed-handle, .ed-rot, .ed-wh"));
+      if (h && !(e.currentTarget as HTMLElement).contains(h)) {
+        e.preventDefault();
+        h.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, clientX: e.clientX, clientY: e.clientY, button: 0, buttons: 1, pointerId: e.pointerId }));
+        return;
+      }
+      const hitSel = under.map((x) => x.closest<HTMLElement>("[data-pick]")?.dataset.pick as LayerId | undefined).find((l) => !!l && (many ? many.includes(l) : l === edit.sel));
+      if (hitSel) {
+        // Bấm-thả không kéo → chọn layer phía trên (đúng chỗ bấm), như Figma
+        const orig = what, sx = e.clientX, sy = e.clientY;
+        const up = (ev: PointerEvent) => {
+          window.removeEventListener("pointerup", up);
+          if (Math.hypot(ev.clientX - sx, ev.clientY - sy) >= 3) return;
+          setTimeout(() => { const g0 = grpOf(orig); if (g0) edit.onMulti?.(g0.ids as LayerId[]); else { edit.onMulti?.([]); edit.onSel(orig); } }, 0);
+        };
+        window.addEventListener("pointerup", up);
+        what = hitSel;
+      }
+    }
     // Shift / ⌘ / Ctrl + bấm = thêm/bớt layer khỏi nhóm chọn (không kéo)
     const grp = grpOf(what), unit = (grp ? grp.ids : [what]) as LayerId[]; // đơn vị chọn: cả nhóm hoặc 1 layer
     if (e.shiftKey || e.metaKey || e.ctrlKey) {
@@ -320,7 +345,8 @@ function useEditKit(edit: CanvasEdit | undefined, k: number, hEm: number, pos: (
   };
   const hit = (what: LayerId) => ({
     "data-pick": what,
-    className: `ed-hit ${isDevice(what) ? "device" : "text"} ${grpOf(what) ? "ingrp" : ""} ${edit.sel === what && !many ? "sel" : ""} ${many?.includes(what) ? "msel" : ""} ${g.pre?.includes(what) ? "pre" : ""} ${edit.hover === what ? "hov" : ""} ${edit.crop === what ? "cropping" : ""}`,
+    "data-z": ordered ? "" : undefined, // slide có thứ tự lớp → không nổi layer đang chọn lên trên (CSS .ed-hit.sel:not([data-z]))
+    className: `ed-hit ${isDevice(what) ? "device" : "text"} ${grpOf(what) ? "ingrp" : ""} ${edit.sel === what && !many ? "sel" : ""} ${many?.includes(what) ? (gsel ? "msel gsel" : "msel") : ""} ${g.pre?.includes(what) ? "pre" : ""} ${edit.hover === what ? "hov" : ""} ${edit.crop === what ? "cropping" : ""}`,
     onPointerDown: (e: RPE) => drag(e, what),
     onDragStart: (e: { preventDefault: () => void }) => e.preventDefault(),
     // Double-click: con của nhóm → vào trong nhóm, chọn riêng con đó; máy có ảnh → vào/ra chế độ căn ảnh
@@ -331,7 +357,7 @@ function useEditKit(edit: CanvasEdit | undefined, k: number, hEm: number, pos: (
     },
     // Rê lên con của nhóm → viền nét đứt quanh cả nhóm (biết bấm vào sẽ chọn cả cụm)
     onPointerEnter: (e: RPE) => {
-      const g0 = grpOf(what); if (!g0 || e.buttons) return;
+      const g0 = grpOf(what); if (!g0 || e.buttons || many?.includes(what)) return; // nhóm đang chọn rồi → không vẽ thêm khung hover
       const root = (e.currentTarget as HTMLElement).closest("[data-cv]"); if (!root) return;
       const R = root.getBoundingClientRect(), rs = g0.ids.map((l) => root.querySelector(`[data-pick="${l}"]`)).filter((x): x is Element => !!x).map((x) => rectEm(x, R, k));
       if (rs.length) setG((o) => ({ ...o, hg: unionRect(rs) }));
@@ -450,11 +476,12 @@ function Shot({ img, mock, c, thumb, sr }: { img?: string | null; mock: number; 
 }
 // Chữ tự do / badge (slide và feature dùng chung): đặt theo tâm (x,y); badge nền = màu tô, chữ đậm tối
 type Kit = ReturnType<typeof useEditKit>;
-function renderExtras(items: TextItem[] | undefined, L: string, t: Theme, ink: string, z: number, kit: Kit, commit: (x: TextItem, v: string) => void) {
+// z = một mức chung (feature) hoặc bảng z theo LayerId (slide có thứ tự lớp)
+function renderExtras(items: TextItem[] | undefined, L: string, t: Theme, ink: string, z: number | Record<string, number>, kit: Kit, commit: (x: TextItem, v: string) => void) {
   return (items ?? []).map((x) => {
     const id = `x:${x.id}` as LayerId, X = kit.lineOf(id, extraText(x, L), x.pill ? t.c1 : t.hl, (v) => commit(x, v));
     return (
-      <div key={x.id} {...kit.hit(id)} style={{ position: "absolute", left: `${x.x}em`, top: `${x.y}em`, transform: "translate(-50%,-50%)", zIndex: z, maxWidth: "88em", textAlign: "center", fontFamily: FONTS[t.font], whiteSpace: "nowrap", ...(x.hidden ? { visibility: "hidden" as const } : {}) }}>
+      <div key={x.id} {...kit.hit(id)} style={{ position: "absolute", left: `${x.x}em`, top: `${x.y}em`, transform: "translate(-50%,-50%)", zIndex: typeof z === "number" ? z : z[id], maxWidth: "88em", textAlign: "center", fontFamily: FONTS[t.font], whiteSpace: "nowrap", ...(x.hidden ? { visibility: "hidden" as const } : {}) }}>
         <div key={X.key} {...X.props} style={{ fontSize: `${x.size}em`, fontWeight: x.weight, lineHeight: 1.2, color: x.pill ? "#15151A" : x.color || ink, ...(x.pill ? { background: t.hl, padding: ".35em .9em", borderRadius: "999px", display: "inline-block" } : {}) }}>{X.children}</div>
       </div>
     );
@@ -462,12 +489,13 @@ function renderExtras(items: TextItem[] | undefined, L: string, t: Theme, ink: s
 }
 
 // Hình trang trí: tâm (x,y) em, rộng size em, xoay rot; nằm dưới máy (z 1) hoặc trên cùng (z 5) khi front
-function renderDecos(items: Deco[] | undefined, front: boolean, t: Theme, kit: Kit) {
+// zm = bảng z theo thứ tự lớp (slide); thiếu thì dùng mức cũ (dưới 1 / trên 7)
+function renderDecos(items: Deco[] | undefined, front: boolean, t: Theme, kit: Kit, zm?: Record<string, number>) {
   return (items ?? []).filter((d) => !!d.front === front).map((d) => {
     const def = decoDef(d.kind), c = d.color || decoColor(def.def, t), c2 = d.color2 || decoColor(def.def2 ?? "white", t);
     return (
       <div key={d.id} {...kit.hit(`d:${d.id}` as LayerId)} style={{ position: "absolute", left: `${d.x}em`, top: `${d.y}em`, width: `${d.size}em`, height: `${d.size * def.ar}em`,
-        transform: `translate(-50%,-50%) rotate(${d.rot ?? 0}deg)`, zIndex: front ? 7 : 1, opacity: d.opacity ?? 1, ...(d.hidden ? { visibility: "hidden" as const } : {}) }}>
+        transform: `translate(-50%,-50%) rotate(${d.rot ?? 0}deg)`, zIndex: zm?.[`d:${d.id}`] ?? (front ? 7 : 1), opacity: d.opacity ?? 1, ...(d.hidden ? { visibility: "hidden" as const } : {}) }}>
         <div style={{ width: "100%", height: "100%", pointerEvents: "none" }} dangerouslySetInnerHTML={{ __html: def.svg(c, c2) }} />
         {kit.hit(`d:${d.id}` as LayerId)?.className.includes(" sel") && kit.handle}
       </div>
@@ -606,7 +634,7 @@ export function SlideCanvas({ p, index, width, size, loc, edit, marks }: { p: Pr
       if (l === "device2" && s.img2) { const c = s.c2 ?? {}; return { v: [c.ix ?? 0, c.iy ?? 0, ...panRange(s.img2, c, r0)], set: (ix, iy) => ({ c2: { ...s.c2, ix, iy } }) }; }
       return null;
     },
-    (items) => s && edit?.onPatch(posPatch(s, items), "drag-multi"), marks);
+    (items) => s && edit?.onPatch(posPatch(s, items), "drag-multi"), marks, true);
   const titleRaw = s ? textOf(s, L)[0] : "";
   useLayoutEffect(() => {
     if (!edit) return;
@@ -631,9 +659,10 @@ export function SlideCanvas({ p, index, width, size, loc, edit, marks }: { p: Pr
   const subH = sub ? subEm * 1.9 + (title ? subEm * 1.4 : 0) : 0;
   const textH = titleH + subH;
   const below = padT + textH + (textH ? 4 : 0); // máy bắt đầu dưới khối chữ
-  const zText = s.front === "device" ? 0 : 3;
-  const block: CSSProperties = { position: "absolute", zIndex: zText, textAlign: t.align, color: ink, fontFamily: FONTS[t.font] };
-  const dev = { kind: size.kind, store: p.store, theme: t, rx: s.rx, ry: s.ry, rz: s.rz, hit: hit("device") };
+  // Thứ tự lớp: mỗi layer một z riêng (zMap) → khối chữ KHÔNG đặt zIndex (để tiêu đề/phụ đề xen được với máy, trang trí)
+  const zm = zMap(s);
+  const block: CSSProperties = { position: "absolute", textAlign: t.align, color: ink, fontFamily: FONTS[t.font] };
+  const dev = { kind: size.kind, store: p.store, theme: t, rx: s.rx, ry: s.ry, rz: s.rz, hit: hit("device"), z: zm.device };
   let devices: ReactNode = null;
 
   if (s.layout === "bottom") {
@@ -654,7 +683,7 @@ export function SlideCanvas({ p, index, width, size, loc, edit, marks }: { p: Pr
       devices = (
         <>
           {!s.hidden?.device2 && (
-            <Device {...dev} hit={hit("device2")} handle={hd("device2")} rz={s.rz + (s.brz ?? 6)} w={w} x={100 - 5 - w + (s.bx ?? 0)} y={below + 8 + (s.by ?? 0)} z={1}>
+            <Device {...dev} hit={hit("device2")} handle={hd("device2")} rz={s.rz + (s.brz ?? 6)} w={w} x={100 - 5 - w + (s.bx ?? 0)} y={below + 8 + (s.by ?? 0)} z={zm.device2}>
               {s.img2 ? <Shot img={s.img2} mock={0} c={s.c2} thumb={th} sr={sr} /> : screenOf(p, (index + 1) % n, sr, th, L)}
             </Device>
           )}
@@ -685,18 +714,18 @@ export function SlideCanvas({ p, index, width, size, loc, edit, marks }: { p: Pr
     <CanvasFrame cvRef={cv} edit={edit} kit={kit} ghost={ghost} mbox={mbox} onCenter={() => isLayer(edit?.sel) && edit?.onPatch(centerPatch(s, edit.sel, hEm), "")}
       style={{ width, height: (width * size.h) / size.w, fontSize: width / 100, ...background(t, index, hEm, n) }}>
       {t.bg === "blur" && <BlurBackdrop t={t} img={imgFor(s, L)} mock={s.mock} thumb={th} />}
-      {renderDecos(s.decos, false, t, kit)}
+      {renderDecos(s.decos, false, t, kit, zm)}
       {(title || sub) && (
         <div style={block}>
           {title && (
-            <div {...hit("title")} style={{ position: "relative", transform: s.tx || s.ty ? `translate(${s.tx ?? 0}em,${s.ty ?? 0}em)` : undefined, ...vis(s.hidden?.title) }}>
+            <div {...hit("title")} style={{ position: "relative", zIndex: zm.title, transform: s.tx || s.ty ? `translate(${s.tx ?? 0}em,${s.ty ?? 0}em)` : undefined, ...vis(s.hidden?.title) }}>
               <h2 key={T.key} {...T.props} style={{ fontSize: `${t.tsize}em`, fontWeight: t.tweight, lineHeight: t.tlh, letterSpacing: "-.02em", margin: 0 }}>{T.children}</h2>
               {edit?.sel === "title" && widthHandles}
               {edit && lines > 3 && <span className="ed-warn">{lines} lines · shorten or widen</span>}
             </div>
           )}
           {sub && (
-            <div {...hit("sub")} style={{ position: "relative", marginTop: title ? `${subEm * 1.4}em` : 0, transform: s.sx || s.sy ? `translate(${s.sx ?? 0}em,${s.sy ?? 0}em)` : undefined, ...vis(s.hidden?.sub) }}>
+            <div {...hit("sub")} style={{ position: "relative", zIndex: zm.sub, marginTop: title ? `${subEm * 1.4}em` : 0, transform: s.sx || s.sy ? `translate(${s.sx ?? 0}em,${s.sy ?? 0}em)` : undefined, ...vis(s.hidden?.sub) }}>
               <p key={U.key} {...U.props} style={{ fontSize: `${subEm}em`, margin: 0, opacity: 0.85, fontWeight: 500, lineHeight: 1.3 }}>{U.children}</p>
               {edit?.sel === "sub" && widthHandles}
             </div>
@@ -704,9 +733,9 @@ export function SlideCanvas({ p, index, width, size, loc, edit, marks }: { p: Pr
         </div>
       )}
       {/* Chữ tự do: đặt theo tâm (x,y); dạng pill thì nền = màu tô, chữ đậm tối */}
-      {renderExtras(s.extras, L, t, ink, zText, kit, (x, v) => edit?.onPatch(patchExtra(s, `x:${x.id}` as LayerId, { t: { ...x.t, [L]: v } }), ""))}
+      {renderExtras(s.extras, L, t, ink, zm, kit, (x, v) => edit?.onPatch(patchExtra(s, `x:${x.id}` as LayerId, { t: { ...x.t, [L]: v } }), ""))}
       {(duo || !s.hidden?.device) && devices}
-      {renderDecos(s.decos, true, t, kit)}
+      {renderDecos(s.decos, true, t, kit, zm)}
     </CanvasFrame>
   );
 }

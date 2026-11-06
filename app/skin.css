@@ -213,3 +213,12 @@ body.ed-anim .ed-hit { transition: transform .2s cubic-bezier(.2,.8,.2,1), left 
 /* cây Layers: ô đổi tên nhóm tại chỗ; dòng không bấm được trong panel xuyên slide */
 .litem .lrename { flex: 1; min-width: 0; height: 22px; padding: 0 6px; border: 1.5px solid var(--accent); border-radius: 6px; background: var(--panel); font: inherit; font-weight: 600; outline: 0; }
 .lmain.static { cursor: default; }
+/* nhóm đang chọn: không viền từng con, chỉ khung bao chung */
+.ed-hit.msel.gsel { outline-color: transparent !important; }
+
+/* --- Kéo thả thứ tự lớp trong cây Layers --- */
+.litem.ldragging { opacity: .4; }
+.litem.drop-before::after, .litem.drop-after::after { content: ""; position: absolute; left: 4px; right: 4px; height: 2px; border-radius: 2px; background: var(--accent); pointer-events: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent); }
+.litem.drop-before::after { top: -1px; } .litem.drop-after::after { bottom: -1px; }
+.litem.drop-into { box-shadow: inset 0 0 0 1.5px var(--accent); background: var(--accent-soft); }
+.lchildren .litem { overflow: visible; }

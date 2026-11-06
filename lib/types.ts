@@ -42,6 +42,7 @@ export interface Slide extends Tilt3D {
   extras?: TextItem[]; // layer chữ tự do
   decos?: Deco[]; // hình trang trí (layer "d:<id>")
   groups?: LayerGroup[]; // nhóm layer (Ctrl+G) — xem LayerGroup
+  order?: string[]; // thứ tự lớp, TRÊN CÙNG trước (LayerId). Thiếu = thứ tự cũ (front/deco.front); xem stackOf trong lib/layers
   front?: "text" | "device"; // phần nào nằm trên (mặc định chữ trên máy)
   hidden?: { title?: boolean; sub?: boolean; device?: boolean; device2?: boolean; text?: boolean }; // ẩn layer (cả lúc xuất); text = bản cũ, tự chuyển khi nạp
   override?: Partial<Theme>; // style riêng của slide này, đè lên Project style

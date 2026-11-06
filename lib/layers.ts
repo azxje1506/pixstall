@@ -78,10 +78,11 @@ export function layersOf(s: Slide, loc: string, next?: number): { id: LayerId; n
   if (title) out.push({ id: "title", name: "Headline", sub: plain(title) });
   if (sub) out.push({ id: "sub", name: "Subtitle", sub: plain(sub) });
   for (const x of s.extras ?? []) out.push({ id: `x:${x.id}`, name: x.pill ? "Badge" : "Text", sub: plain(extraText(x, loc)) || "—" });
-  for (const d of s.decos ?? []) out.push({ id: `d:${d.id}`, name: decoDef(d.kind).name, sub: d.front ? "Decoration · on top" : "Decoration" });
+  for (const d of s.decos ?? []) out.push({ id: `d:${d.id}`, name: decoDef(d.kind).name, sub: "Decoration" });
   out.push({ id: "device", name: "Device", sub: s.img ? "Screenshot" : "Sample" });
   if (s.layout === "duo") out.push({ id: "device2", name: "Device 2", sub: s.img2 ? "Own screenshot" : `Linked · slide ${String(next ?? 0).padStart(2, "0")}` });
-  return out;
+  const st = stackOf(s); // xếp theo thứ tự lớp: trên cùng trước
+  return out.sort((a, b) => st.indexOf(a.id) - st.indexOf(b.id));
 }
 
 export const layerName = (s: Slide, l: LayerId) => l === "title" ? "Headline" : l === "sub" ? "Subtitle" : l === "device" ? "Device" : l === "device2" ? "Device 2" : isDeco(l) ? decoDef(decoOf(s, l)?.kind ?? "").name : extraOf(s, l)?.pill ? "Badge" : "Text";
@@ -248,3 +249,90 @@ export function treeOf<R extends { id: LayerId }>(h: GHolder, rows: R[]): TreeRo
 }
 // Patch xoá/sửa layer kèm tỉa nhóm (layer đã mất thì rút khỏi nhóm, nhóm < 2 con thì giải tán)
 export const withPrune = <T extends GHolder>(h: T, pt: Partial<T> | null): Partial<T> | null => (pt ? { ...pt, groups: pruneGroups({ ...h, ...pt }) } : null);
+
+// ===================== Thứ tự lớp (z-order) — chỉ slide =====================
+// Slide.order = danh sách LayerId, phần tử đầu nằm TRÊN CÙNG (giống cây Layers của Figma). Thiếu order → suy từ quy tắc cũ:
+// trang trí "On top" (z7) > chữ (z3, hoặc z0 khi s.front = "device") > máy (z2) > máy 2 / trang trí "Behind" (z1); cùng z thì vẽ sau nằm trên.
+// Layer chưa có trong order (mới thêm, template thêm) được chèn theo mức z cũ của nó. Thành viên một nhóm luôn đứng liền nhau
+// (gom về chỗ thành viên cao nhất) — nhóm là một khối trong ngăn xếp như Figma
+const ALL_FIXED: LayerId[] = ["title", "sub", "device", "device2"];
+export function universeOf(s: Slide): LayerId[] {
+  return [...ALL_FIXED, ...(s.extras ?? []).map((x) => `x:${x.id}` as LayerId), ...(s.decos ?? []).map((d) => `d:${d.id}` as LayerId)];
+}
+// Mức z cũ + thứ tự vẽ cũ → số so sánh (lớn = nằm trên)
+function legacyRank(s: Slide): Map<LayerId, number> {
+  const m = new Map<LayerId, number>(), zt = s.front === "device" ? 0 : 3;
+  let dom = 0; const put = (l: LayerId, z: number) => m.set(l, z * 1000 + dom++);
+  for (const d of s.decos ?? []) if (!d.front) put(`d:${d.id}`, 1);
+  put("sub", zt); put("title", zt); // tiêu đề đứng trên phụ đề trong cây (hai khối không chồng nhau)
+  for (const x of s.extras ?? []) put(`x:${x.id}`, zt);
+  put("device2", 1); put("device", 2);
+  for (const d of s.decos ?? []) if (d.front) put(`d:${d.id}`, 7);
+  return m;
+}
+export function stackOf(s: Slide): LayerId[] {
+  const all = universeOf(s), rank = legacyRank(s);
+  const byLegacy = [...all].sort((a, b) => (rank.get(b) ?? 0) - (rank.get(a) ?? 0));
+  let out: LayerId[];
+  if (!s.order?.length) out = byLegacy;
+  else {
+    out = (s.order as LayerId[]).filter((l) => all.includes(l));
+    for (const m of byLegacy) {
+      if (out.includes(m)) continue;
+      const z = rank.get(m) ?? 0, at = out.findIndex((x) => (rank.get(x) ?? 0) < z);
+      out.splice(at < 0 ? out.length : at, 0, m);
+    }
+  }
+  // Gom thành viên nhóm liền nhau tại chỗ thành viên cao nhất
+  for (const g of s.groups ?? []) {
+    const mem = out.filter((l) => g.ids.includes(l)); if (mem.length < 2) continue;
+    const at = out.indexOf(mem[0]); out = out.filter((l) => !mem.includes(l)); out.splice(at, 0, ...mem);
+  }
+  return out;
+}
+// z-index cho từng layer khi vẽ: trên cùng = N … dưới cùng = 1
+export function zMap(s: Slide): Record<string, number> {
+  const st = stackOf(s), z: Record<string, number> = {};
+  st.forEach((l, i) => { z[l] = st.length - i; });
+  return z;
+}
+// Kéo thả trong cây Layers: đưa ids tới ngay trước/sau anchor; gid = nhóm đích (null = ra ngoài mọi nhóm, undefined = giữ nhóm cũ)
+export function moveInStack(s: Slide, ids: LayerId[], anchor: { id: LayerId; after: boolean } | null, gid: string | null | undefined): Partial<Slide> {
+  const st = stackOf(s), moving = st.filter((l) => ids.includes(l)), rest = st.filter((l) => !ids.includes(l));
+  let at = anchor ? rest.indexOf(anchor.id) : rest.length;
+  if (at < 0) at = rest.length; else if (anchor?.after) at++;
+  rest.splice(at, 0, ...moving);
+  let groups = s.groups;
+  if (gid !== undefined) {
+    groups = (s.groups ?? []).map((g) => ({ ...g, ids: g.id === gid ? [...g.ids.filter((x) => !ids.includes(x as LayerId)), ...ids] : g.ids.filter((x) => !ids.includes(x as LayerId)) }));
+  }
+  const pt: Partial<Slide> = { order: rest, groups };
+  return { ...pt, groups: pruneGroups({ ...s, ...pt }) };
+}
+// Đưa lên/xuống: front/back = trên cùng/dưới cùng, forward/backward = vượt 1 khối. Đang chọn con trong nhóm → chỉ xếp giữa anh em trong nhóm;
+// còn lại xếp theo khối cấp ngoài (nhóm = 1 khối)
+export type ZOp = "front" | "forward" | "backward" | "back";
+export function zPatch(s: Slide, ids: LayerId[], op: ZOp): Partial<Slide> | null {
+  const st = stackOf(s), g = (s.groups ?? []).find((x) => ids.every((l) => x.ids.includes(l)) && ids.length < x.ids.length);
+  // Khối: nhóm (không chứa ids) = 1 khối; trong ngữ cảnh nhóm g thì mỗi con là 1 khối
+  const scope = g ? st.filter((l) => g.ids.includes(l)) : st;
+  const units: LayerId[][] = [];
+  for (const l of scope) {
+    const gg = g ? undefined : (s.groups ?? []).find((x) => x.ids.includes(l));
+    const key = ids.includes(l) ? "__sel" : gg ? gg.id : l;
+    const last = units[units.length - 1];
+    if (last && (last as unknown as { k?: string }).k === key && key !== l) last.push(l);
+    else { const u = [l] as LayerId[] & { k?: string }; u.k = key; units.push(u); }
+  }
+  // Các khối đang chọn (có thể rời nhau) gộp thành 1 khối tại chỗ khối chọn đầu tiên
+  const isSel = (u: LayerId[]) => (u as unknown as { k?: string }).k === "__sel";
+  const si = units.findIndex(isSel); if (si < 0) return null;
+  const sel = units.filter(isSel).flat();
+  for (let i = units.length - 1; i >= 0; i--) if (isSel(units[i])) units.splice(i, 1);
+  const to = op === "front" ? 0 : op === "back" ? units.length : op === "forward" ? Math.max(0, si - 1) : Math.min(units.length, si + 1);
+  if (to === si) return null;
+  units.splice(to, 0, sel);
+  const flat = units.flat();
+  const order = g ? (() => { const at = st.indexOf(scope[0]); const o = st.filter((l) => !scope.includes(l)); o.splice(at, 0, ...flat); return o; })() : flat;
+  return { order };
+}
