@@ -16,7 +16,7 @@ import type { Project, SizePreset, Theme, TextItem, Deco } from "@/lib/types";
 import { decoDef, decoColor } from "@/lib/decos";
 import { FONTS, FEATURE_SIZE } from "@/lib/presets";
 import { textOf, themeOf, richParts, imgFor } from "@/lib/rules";
-import { decoOf, patchDeco, posOf, withPos, patchExtra, extraText, isDevice, isLayer, featText, setFeatText, phoneOf, phoneIdx, setPhone, PHONE_IDS, type LayerId } from "@/lib/layers";
+import { centerPatch, decoOf, patchDeco, posOf, withPos, patchExtra, extraText, isDevice, isLayer, featText, setFeatText, phoneOf, phoneIdx, setPhone, PHONE_IDS, type LayerId } from "@/lib/layers";
 import { imgSrc, imgMeta } from "@/lib/images";
 import type { Slide } from "@/lib/types";
 import { mockScreen } from "@/lib/mocks";
@@ -52,7 +52,7 @@ type Tf = { scale?: { v: number; min: number; max: number; mul: number; set?: (v
 type CropInfo = { v: [number, number, number, number]; set: (ix: number, iy: number) => Record<string, unknown> };
 type Rect = { l: number; t: number; r: number; b: number };
 // Lớp phủ khi sửa (em): đường gióng x/y, thước đo khoảng cách m, nhãn số tip
-type Guides = { x?: number; y?: number; m?: { x1: number; y1: number; x2: number; y2: number; label: string }; tip?: { x: number; y: number; text: string } };
+type Guides = { edge?: boolean; x?: number; y?: number; m?: { x1: number; y1: number; x2: number; y2: number; label: string }; tip?: { x: number; y: number; text: string } };
 
 const SNAP = 1.2; // em: trong khoảng này thì hút
 const r1 = (v: number) => Math.round(v * 10) / 10;
@@ -255,8 +255,10 @@ function useEditKit(edit: CanvasEdit | undefined, k: number, hEm: number, pos: (
       let x = bx + mx, y = by + my;
       if (sx) { x += sx.d; ng.x = sx.at; } else if (!free && Math.abs(x) < SNAP) x = 0;
       if (sy) { y += sy.d; ng.y = sy.at; } else if (!free && Math.abs(y) < SNAP) y = 0;
-      // Giữ tâm trang trí trong vùng có thể kéo lại; vẫn cho hình tràn viền để trang trí.
-      if (what.startsWith("d:")) { x = clamp(x, 3, 97); y = clamp(y, 3, hEm - 3); }
+      // Mọi layer: tâm luôn nằm trong khung (cách mép 2em) → luôn còn một nửa để bấm kéo lại; vẫn cho tràn viền
+      const ncx = cc[0] + x - bx, ncy = cc[1] + y - by;
+      const kx = clamp(ncx, 2, 98) - ncx, ky = clamp(ncy, 2, hEm - 2) - ncy;
+      if (kx || ky) { x += kx; y += ky; ng.edge = true; }
       if (near) ng.m = measure({ l: r0.l + x - bx, r: r0.r + x - bx, t: r0.t + y - by, b: r0.b + y - by }, near, pxPerEm);
       setG(ng);
       move(what, r1(x), r1(y));
@@ -315,6 +317,7 @@ function useEditKit(edit: CanvasEdit | undefined, k: number, hEm: number, pos: (
   const m = g.m;
   const guides = (
     <>
+      {g.edge && <div className="ed-edge" />}
       {g.x !== undefined && <div className="ed-guide v" style={{ left: `${g.x}em` }} />}
       {g.y !== undefined && <div className="ed-guide h" style={{ top: `${g.y}em` }} />}
       {m && (
@@ -417,6 +420,7 @@ export function SlideCanvas({ p, index, width, size, loc, edit }: { p: Project; 
   const L = loc ?? p.loc, k = width / 100;
   const cv = useRef<HTMLDivElement>(null);
   const [lines, setLines] = useState(0); // số dòng tiêu đề (chỉ đo khi đang sửa)
+  const [outside, setOutside] = useState(false); // layer đang chọn lọt ra ngoài khung (<35% diện tích còn trong khung)
   const hEm = (100 * size.h) / size.w;
   const centered = s && (s.layout === "center" || s.layout === "bleed" || s.layout === "bottom");
   const duo = s?.layout === "duo";
@@ -447,6 +451,16 @@ export function SlideCanvas({ p, index, width, size, loc, edit }: { p: Project; 
     const h = cv.current?.querySelector<HTMLElement>('[data-line="title"]');
     setLines(h ? Math.round(h.getBoundingClientRect().height / ((width / 100) * t.tsize * t.tlh)) : 0);
   }, [edit, titleRaw, width, t.tsize, t.tlh, t.font, t.tweight, s?.tw, s?.layout]);
+  // Sau mỗi lần vẽ: layer đang chọn còn bao nhiêu phần trong khung (dữ liệu cũ có thể nằm hẳn ngoài)
+  useLayoutEffect(() => {
+    const sel = edit?.sel, root = cv.current;
+    if (!sel || sel === "slide" || !root) { setOutside(false); return; }
+    const el = root.querySelector<HTMLElement>(`[data-pick="${sel}"]`);
+    if (!el) { setOutside(false); return; }
+    const a = el.getBoundingClientRect(), b = root.getBoundingClientRect();
+    const iw = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)), ih = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+    setOutside(a.width * a.height > 0 && (iw * ih) / (a.width * a.height) < 0.35);
+  });
   if (!s) return null;
   const [title, sub] = textOf(s, L);
   const tab = size.kind === "tablet", asp = ASPECT[size.kind];
@@ -539,6 +553,11 @@ export function SlideCanvas({ p, index, width, size, loc, edit }: { p: Project; 
       {(duo || !s.hidden?.device) && devices}
       {renderDecos(s.decos, true, t, kit)}
       {kit.guides}
+      {edit && outside && isLayer(edit.sel) && (
+        <button className="ed-bringback" onPointerDown={(e) => e.stopPropagation()} onClick={() => edit.onPatch(centerPatch(s, edit.sel as LayerId, hEm), "")}>
+          Layer is outside the frame · <b>Bring to center</b>
+        </button>
+      )}
     </div>
   );
 }

@@ -9,7 +9,7 @@
 // Mọi thay đổi đi qua update(fn, tag) — tag gộp các lần kéo slider thành 1 bước undo
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ImageUp, CopyPlus, ImageOff, RotateCcw, Smartphone, EyeOff, Eye, TextAlignStart, TextAlignCenter, Sun, Moon, Type,
-  PanelBottom, ArrowDownToLine, Copy, MoveRight, CopyCheck, ChevronRight, Frame, Highlighter, Plus, Trash2, Crop, Link2, Languages, Columns2, AlignCenter, GalleryHorizontalEnd, Image as ImageIcon } from "lucide-react";
+  PanelBottom, ArrowDownToLine, Copy, MoveRight, CopyCheck, ChevronRight, Frame, Highlighter, Plus, Trash2, Crop, Link2, Languages, Columns2, AlignCenter, GalleryHorizontalEnd, Image as ImageIcon, LocateFixed } from "lucide-react";
 import type { Deco, Project, Slide, Theme, ThemeKey, Feature, Layout, Tilt3D, FrameStyle, FrameColor, Bg, TextItem, ImgFit, PhoneCfg } from "@/lib/types";
 import { FONTS, FRAME_COLORS, GRADIENTS, TILT_PRESETS, DEFAULT_THEME, LOCALES, uid } from "@/lib/presets";
 import { DECOS, DECO_GROUPS, decoDef, decoColor, decoSize } from "@/lib/decos";
@@ -20,7 +20,7 @@ import { Seg, Slider, Group, Num, Prop, Tabs } from "./ui";
 import { ColorField } from "./ColorField";
 import { MenuButton, type MenuItem } from "./Popover";
 import type { CanvasPick, LayerPick } from "./SlideCanvas";
-import { isLayer, isDeco, decoOf, patchDeco, isHidden, layersOf, layerName as nameOf, extraOf, extraText, patchExtra, posOf, withPos, featText, setFeatText, fLayersOf, fIsHidden, fRemovable, fLayerName, phoneIdx, phoneOf, setPhone, phoneCount as phoneCountOf, type LayerId } from "@/lib/layers";
+import { isLayer, isDeco, decoOf, patchDeco, centerPatch, isHidden, layersOf, layerName as nameOf, extraOf, extraText, patchExtra, posOf, withPos, featText, setFeatText, fLayersOf, fIsHidden, fRemovable, fLayerName, phoneIdx, phoneOf, setPhone, phoneCount as phoneCountOf, type LayerId } from "@/lib/layers";
 import { imgSrc, imgMeta, putImage } from "@/lib/images";
 import { ASPECT } from "./Device";
 import { TEMPLATES, TPL_GROUPS, activeTemplate, applyTemplate, type Template } from "@/lib/templates";
@@ -631,7 +631,8 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
     return <p className="warnline small"><Crop />{m.w}×{m.h} is {d > 0 ? "taller" : "wider"} than this screen — the {d > 0 ? "top & bottom" : "sides"} get cropped. Drag to reposition or switch to Fit.</p>;
   })();
   const actions = <>
-    {moved && <button className="gbtn" title="Reset position" onClick={resetPos}><RotateCcw />Reset</button>}
+    {!layer && moved && <button className="gbtn" title="Reset position" onClick={resetPos}><RotateCcw />Reset</button>}
+    {layer && <button className="gbtn" title="Bring to center" aria-label="Bring to center" onClick={() => { const z = currentSize(p); setSlide(centerPatch(s, layer, (100 * z.h) / z.w)); }}><LocateFixed />Center</button>}
     {layer && <button className="ibtn" title={hiddenNow ? "Show layer" : "Hide layer"} aria-label={hiddenNow ? "Show layer" : "Hide layer"} onClick={() => onToggleHidden(layer)}>{hiddenNow ? <EyeOff /> : <Eye />}</button>}
     {layer && layer !== "device" && <button className="ibtn danger" title="Delete layer (Del)" aria-label="Delete layer" onClick={() => onRemoveLayer(layer)}><Trash2 /></button>}
     {!layer && <button className="ibtn" title="Duplicate slide" aria-label="Duplicate slide" onClick={onDuplicate}><CopyPlus /></button>}
@@ -677,9 +678,6 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
           <Num prefix="X" value={dc.x} step={0.5} onChange={(x) => setD({ x }, "dx")} />
           <Num prefix="Y" value={dc.y} step={0.5} onChange={(y) => setD({ y }, "dy")} />
         </Prop>
-        <button className="ghost sm" onClick={() => {
-          const z = currentSize(p); setD({ x: 50, y: Math.round(50 * z.h / z.w), hidden: false });
-        }}><RotateCcw />Bring to center</button>
         <Prop stack label="Layer">
           <Seg full value={dc.front ? "front" : "back"} onChange={(v: string) => setD({ front: v === "front" })} options={[{ v: "back", label: "Behind device" }, { v: "front", label: "On top" }]} />
         </Prop>

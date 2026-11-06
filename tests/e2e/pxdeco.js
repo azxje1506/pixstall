@@ -39,10 +39,24 @@ const { chromium } = require('playwright');
   const eb = await el.boundingBox(), cb = await pg.locator('.slidewrap.on [data-cv]').boundingBox();
   if (eb.x + eb.width/2 > cb.x + cb.width || eb.y + eb.height/2 > cb.y + cb.height) throw new Error('Decoration escaped canvas');
   r.dragBounded = true;
-  await pg.click('button:has-text("Bring to center")'); await pg.waitForTimeout(150);
+  await pg.click('.right button[aria-label="Bring to center"]'); await pg.waitForTimeout(150);
   const center = await el.boundingBox(), canvasBox = await pg.locator('.slidewrap.on [data-cv]').boundingBox();
   if (Math.abs(center.x + center.width/2 - canvasBox.x - canvasBox.width/2) > 3) throw new Error('Center failed');
   r.centered = true;
+  // Thiết bị: kéo ra xa vẫn còn trong khung; dữ liệu cũ nằm hẳn ngoài → hiện nút Bring to center trên canvas
+  const dev = pg.locator('.slidewrap.on [data-pick="device"]'), d0 = await dev.boundingBox();
+  await pg.mouse.move(d0.x + d0.width/2, d0.y + d0.height/2); await pg.mouse.down(); await pg.mouse.move(5, 5, {steps: 8}); await pg.mouse.up(); await pg.waitForTimeout(150);
+  const d1 = await dev.boundingBox(), cv1 = await pg.locator('.slidewrap.on [data-cv]').boundingBox();
+  if (d1.x + d1.width/2 < cv1.x || d1.y + d1.height/2 < cv1.y) throw new Error('Device escaped canvas');
+  r.deviceBounded = true;
+  await pg.click('.right button[aria-label="Bring to center"]'); await pg.waitForTimeout(150);
+  await el.click({ force: true }); await pg.waitForTimeout(100);
+  await pg.locator('.right .num').filter({ hasText: 'X' }).last().locator('input').fill('400'); await pg.keyboard.press('Enter'); await pg.waitForTimeout(250);
+  r.bringBackPill = await pg.locator('.slidewrap.on .ed-bringback').count();
+  if (r.bringBackPill !== 1) throw new Error('No bring-back button for off-canvas layer');
+  await pg.click('.slidewrap.on .ed-bringback'); await pg.waitForTimeout(200);
+  r.pillGone = (await pg.locator('.slidewrap.on .ed-bringback').count()) === 0;
+  await pg.screenshot({ path: D + 'bringback.png' });
   // 4) Delete + Undo
   await pg.keyboard.press('Delete'); await pg.waitForTimeout(150); r.afterDel = await decos();
   await pg.keyboard.press('Control+z'); await pg.waitForTimeout(150); r.afterUndo = await decos();

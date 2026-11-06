@@ -91,6 +91,17 @@ export function removeLayer(s: Slide, l: LayerId): Partial<Slide> | null {
   return { extras: (s.extras ?? []).filter((e) => e.id !== id) };
 }
 
+// Đưa layer về giữa khung (hEm = chiều cao slide theo em): máy/tiêu đề/phụ đề = bỏ dời; chữ tự do + trang trí = đặt tâm vào giữa và hiện lại
+export function centerPatch(s: Slide, l: LayerId, hEm: number): Partial<Slide> {
+  if (l === "device") return { dx: 0, dy: 0, hidden: { ...s.hidden, device: false } };
+  if (l === "device2") return { bx: 0, by: 0, hidden: { ...s.hidden, device2: false } };
+  if (l === "title") return { tx: 0, ty: 0, hidden: { ...s.hidden, title: false } };
+  if (l === "sub") return { sx: 0, sy: 0, hidden: { ...s.hidden, sub: false } };
+  const y = Math.round(hEm * 5) / 10;
+  if (isDeco(l)) return patchDeco(s, l, { x: 50, y, hidden: false });
+  return patchExtra(s, l, { x: 50, y, hidden: false });
+}
+
 // Có thể thêm loại chữ nào: headline/subtitle chỉ khi đang không có
 export const canAdd = (s: Slide, loc: string) => { const [t, u] = textOf(s, loc); return { title: !t, sub: !u }; };
 
