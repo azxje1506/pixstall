@@ -24,6 +24,25 @@ const { chromium } = require('playwright');
   await pg.click('.right .seg button:has-text("On top")'); await pg.waitForTimeout(150);
   r.zTop = await el.evaluate((e) => getComputedStyle(e).zIndex);
   await pg.screenshot({ path: D + 'deco-add.png' });
+  // Regression: tay cầm resize thực sự đổi kích thước, Bring to center khôi phục vị trí.
+  const handle = el.locator('.ed-handle').last();
+  const hb = await handle.boundingBox(), beforeSize = await el.boundingBox();
+  if (!hb) throw new Error('Missing resize handle');
+  await pg.mouse.move(hb.x + hb.width/2, hb.y + hb.height/2); await pg.mouse.down();
+  await pg.mouse.move(hb.x + hb.width/2 + 24, hb.y + hb.height/2 + 24, {steps: 5}); await pg.mouse.up();
+  await pg.waitForTimeout(150); const afterSize = await el.boundingBox();
+  if (afterSize.width <= beforeSize.width + 3) throw new Error('Resize did not enlarge decoration');
+  r.resized = true;
+  const edgeStart = await el.boundingBox();
+  await pg.mouse.move(edgeStart.x + edgeStart.width/2, edgeStart.y + edgeStart.height/2); await pg.mouse.down();
+  await pg.mouse.move(1435, 895, {steps: 8}); await pg.mouse.up(); await pg.waitForTimeout(150);
+  const eb = await el.boundingBox(), cb = await pg.locator('.slidewrap.on [data-cv]').boundingBox();
+  if (eb.x + eb.width/2 > cb.x + cb.width || eb.y + eb.height/2 > cb.y + cb.height) throw new Error('Decoration escaped canvas');
+  r.dragBounded = true;
+  await pg.click('button:has-text("Bring to center")'); await pg.waitForTimeout(150);
+  const center = await el.boundingBox(), canvasBox = await pg.locator('.slidewrap.on [data-cv]').boundingBox();
+  if (Math.abs(center.x + center.width/2 - canvasBox.x - canvasBox.width/2) > 3) throw new Error('Center failed');
+  r.centered = true;
   // 4) Delete + Undo
   await pg.keyboard.press('Delete'); await pg.waitForTimeout(150); r.afterDel = await decos();
   await pg.keyboard.press('Control+z'); await pg.waitForTimeout(150); r.afterUndo = await decos();
@@ -40,6 +59,11 @@ const { chromium } = require('playwright');
   await pg.click('.right .seg button:has-text("Blur")'); await pg.waitForTimeout(400);
   r.blurLayers = await pg.locator('.slidewrap.on [data-cv] > div[style*="blur("]').count();
   await pg.screenshot({ path: D + 'deco-blur.png' });
+  await pg.click('.right .seg button:text-is("Color")'); await pg.waitForTimeout(150);
+  r.solidPresets = await pg.locator('.right .swatches button[aria-label^="Color #"]').count();
+  if (r.solidPresets !== 8) throw new Error('Wrong color presets');
+  await pg.locator('.right .swatches button[aria-label="Color #BEF264"]').click();
+  if (!(await pg.locator('.right .seg button:text-is("Color")').getAttribute('class') || '').includes('on')) throw new Error('Color preset switched mode');
   // 7) Hover menu File: chữ không trắng (sáng + tối)
   const hoverColor = async () => { await pg.click('.top button[aria-haspopup="menu"]'); await pg.waitForTimeout(200); const it = pg.locator('.pop button:has-text("Open")').first(); await it.hover(); await pg.waitForTimeout(150);
     const c = await it.evaluate((e) => [getComputedStyle(e).color, getComputedStyle(e.querySelector('.cico') || e).color]); await pg.keyboard.press('Escape'); return c.join(' / '); };

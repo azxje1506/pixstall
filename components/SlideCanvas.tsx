@@ -16,7 +16,7 @@ import type { Project, SizePreset, Theme, TextItem, Deco } from "@/lib/types";
 import { decoDef, decoColor } from "@/lib/decos";
 import { FONTS, FEATURE_SIZE } from "@/lib/presets";
 import { textOf, themeOf, richParts, imgFor } from "@/lib/rules";
-import { posOf, withPos, patchExtra, extraText, isDevice, isLayer, featText, setFeatText, phoneOf, phoneIdx, setPhone, PHONE_IDS, type LayerId } from "@/lib/layers";
+import { decoOf, patchDeco, posOf, withPos, patchExtra, extraText, isDevice, isLayer, featText, setFeatText, phoneOf, phoneIdx, setPhone, PHONE_IDS, type LayerId } from "@/lib/layers";
 import { imgSrc, imgMeta } from "@/lib/images";
 import type { Slide } from "@/lib/types";
 import { mockScreen } from "@/lib/mocks";
@@ -47,7 +47,7 @@ export interface CanvasEdit {
   onCrop?: (l: LayerId | null) => void;
 }
 // Tay cầm của một layer máy: đổi cỡ (scale) và xoay (rot, ghi vào khoá key)
-type Tf = { scale?: { v: number; min: number; max: number; mul: number }; rot?: { v: number; set: (a: number) => Record<string, unknown> } };
+type Tf = { scale?: { v: number; min: number; max: number; mul: number; set?: (v: number) => Record<string, unknown> }; rot?: { v: number; set: (a: number) => Record<string, unknown> } };
 // Căn ảnh của một layer máy: v = [ix, iy, khoảng dư x, khoảng dư y]; set(ix, iy) = patch ghi lại
 type CropInfo = { v: [number, number, number, number]; set: (ix: number, iy: number) => Record<string, unknown> };
 type Rect = { l: number; t: number; r: number; b: number };
@@ -255,6 +255,8 @@ function useEditKit(edit: CanvasEdit | undefined, k: number, hEm: number, pos: (
       let x = bx + mx, y = by + my;
       if (sx) { x += sx.d; ng.x = sx.at; } else if (!free && Math.abs(x) < SNAP) x = 0;
       if (sy) { y += sy.d; ng.y = sy.at; } else if (!free && Math.abs(y) < SNAP) y = 0;
+      // Giữ tâm trang trí trong vùng có thể kéo lại; vẫn cho hình tràn viền để trang trí.
+      if (what.startsWith("d:")) { x = clamp(x, 3, 97); y = clamp(y, 3, hEm - 3); }
       if (near) ng.m = measure({ l: r0.l + x - bx, r: r0.r + x - bx, t: r0.t + y - by, b: r0.b + y - by }, near, pxPerEm);
       setG(ng);
       move(what, r1(x), r1(y));
@@ -273,7 +275,7 @@ function useEditKit(edit: CanvasEdit | undefined, k: number, hEm: number, pos: (
   const ptr = (e: RPE) => { const R = (e.currentTarget as HTMLElement).closest("[data-cv]")!.getBoundingClientRect(); return [(e.clientX - R.left) / k, (e.clientY - R.top) / k]; };
 
   // 4 nút góc đổi cỡ máy (góc trái đảo dấu) + nút tròn xoay (hút 0°/±15°); ẩn khi đang căn ảnh
-  const cur = isLayer(edit.sel) && isDevice(edit.sel) && edit.crop !== edit.sel ? tf(edit.sel) : null;
+  const cur = isLayer(edit.sel) && (isDevice(edit.sel) || edit.sel.startsWith("d:")) && edit.crop !== edit.sel ? tf(edit.sel) : null;
   const scale = cur?.scale, rot = cur?.rot;
   const handle = cur ? (
     <>
@@ -282,9 +284,12 @@ function useEditKit(edit: CanvasEdit | undefined, k: number, hEm: number, pos: (
           e.stopPropagation();
           const sign = c.includes("e") ? 1 : -1, [px, py] = ptr(e);
           startDrag(e, k, (mx, my) => {
-            const v = Math.round(clamp(scale.v + mx * sign * scale.mul, scale.min, scale.max));
+            // Trang trí: dùng delta theo trục cục bộ của hình đã xoay, giữ tâm và tỉ lệ.
+            const a = (cur.rot?.v ?? 0) * Math.PI / 180;
+            const delta = scale.set ? (mx * Math.cos(a) + my * Math.sin(a)) * 2 : mx;
+            const v = Math.round(clamp(scale.v + delta * sign * scale.mul, scale.min, scale.max));
             setG({ tip: { x: px + mx, y: py + my, text: `${v}%` } });
-            edit.onPatch({ scale: v }, "drag-scale");
+            edit.onPatch(scale.set ? scale.set(v) : { scale: v }, "drag-scale");
           }, () => setG({}));
         }} />
       ))}
@@ -298,7 +303,7 @@ function useEditKit(edit: CanvasEdit | undefined, k: number, hEm: number, pos: (
             let a = rot.v + ((Math.atan2(sy + my * k - cy, sx + mx * k - cx) - a0) * 180) / Math.PI;
             a = ((a + 540) % 360) - 180;
             for (const t of [0, 15, -15]) if (Math.abs(a - t) < 2) a = t;
-            a = Math.round(clamp(a, -45, 45));
+            a = Math.round(clamp(a, scale?.set ? -180 : -45, scale?.set ? 180 : 45));
             setG({ tip: { x: px + mx, y: py + my, text: `${a}°` } });
             edit.onPatch(rot.set(a), "drag-rot");
           }, () => setG({}));
@@ -377,6 +382,7 @@ function renderDecos(items: Deco[] | undefined, front: boolean, t: Theme, kit: K
       <div key={d.id} {...kit.hit(`d:${d.id}` as LayerId)} style={{ position: "absolute", left: `${d.x}em`, top: `${d.y}em`, width: `${d.size}em`, height: `${d.size * def.ar}em`,
         transform: `translate(-50%,-50%) rotate(${d.rot ?? 0}deg)`, zIndex: front ? 5 : 1, opacity: d.opacity ?? 1, ...(d.hidden ? { visibility: "hidden" as const } : {}) }}>
         <div style={{ width: "100%", height: "100%", pointerEvents: "none" }} dangerouslySetInnerHTML={{ __html: def.svg(c, c2) }} />
+        {kit.hit(`d:${d.id}` as LayerId)?.className.includes(" sel") && kit.handle}
       </div>
     );
   });
@@ -418,7 +424,12 @@ export function SlideCanvas({ p, index, width, size, loc, edit }: { p: Project; 
     (l) => (s ? posOf(s, l) : [0, 0]),
     (l, x, y) => s && edit?.onPatch(withPos(s, l, x, y), "drag-" + l),
     // Đổi cỡ: Duo dùng chung s.scale cho 2 máy (bề ngang máy = scale·0.66); xoay máy 2 ghi vào brz (độ nghiêng thêm)
-    (l) => !s ? null : l === "device2"
+    (l) => !s ? null : l.startsWith("d:") ? (() => {
+      const d = decoOf(s, l); return !d ? null : {
+        scale: { v: d.size, min: 4, max: 140, mul: 1, set: (size: number) => patchDeco(s, l, { size }) },
+        rot: { v: d.rot ?? 0, set: (rot: number) => patchDeco(s, l, { rot }) },
+      };
+    })() : l === "device2"
       ? { scale: { v: s.scale, min: 40, max: 100, mul: 1 / 0.66 }, rot: { v: s.brz ?? 6, set: (a: number) => ({ brz: a }) } }
       : { scale: { v: s.scale, min: 40, max: 100, mul: duo ? 1 / 0.66 : centered ? 2 : 1 }, rot: { v: s.rz, set: (a: number) => ({ rz: a }) } },
     size.w / 100,

@@ -127,13 +127,17 @@ function BgGroup({ sc }: { sc: Scope }) {
             <Prop label="From" {...mk(sc, "c1")}><ColorField label="Gradient start" value={t.c1} onChange={(c1) => set({ c1 }, "c1")} /></Prop>
             <Prop label="To" {...mk(sc, "c2")}><ColorField label="Gradient end" value={t.c2} onChange={(c2) => set({ c2 }, "c2")} /></Prop>
           </>}
-      <Prop label="Presets">
+      {t.bg === "color" ? <Prop label="Presets"><div className="swatches">
+        {["#FFFFFF", "#F4F4F5", "#18181B", "#583DF6", "#38BDF8", "#BEF264", "#FAC515", "#F472B6"].map((solid) => (
+          <button key={solid} title={`Color ${solid}`} aria-label={`Color ${solid}`} className={t.solid.toUpperCase() === solid ? "on" : ""} style={{ background: solid }} onClick={() => set({ solid })} />
+        ))}
+      </div></Prop> : <Prop label={t.bg === "blur" ? "Tint presets" : "Presets"}>
         <div className="swatches">
           {GRADIENTS.map(([a, b]) => (
-            <button key={a} className={gOn(a, b) ? "on" : ""} title={`Gradient ${a} → ${b}`} aria-label={`Gradient ${a} to ${b}`} style={{ background: `linear-gradient(135deg,${a},${b})` }} onClick={() => set({ c1: a, c2: b, ...(t.bg === "color" ? { bg: "gradient" as Bg } : {}) })} />
+            <button key={a} className={gOn(a, b) ? "on" : ""} title={`Gradient ${a} → ${b}`} aria-label={`Gradient ${a} to ${b}`} style={{ background: `linear-gradient(135deg,${a},${b})` }} onClick={() => set({ c1: a, c2: b })} />
           ))}
         </div>
-      </Prop>
+      </Prop>}
       {t.bg === "blur" && <>
         <Slider label="Blur" value={t.blur} min={0} max={30} onChange={(blur) => set({ blur }, "blur")} {...mk(sc, "blur")} />
         <Slider label="Overlay" value={t.overlay} min={0} max={80} unit="%" onChange={(overlay) => set({ overlay }, "overlay")} {...mk(sc, "overlay")} />
@@ -673,6 +677,9 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
           <Num prefix="X" value={dc.x} step={0.5} onChange={(x) => setD({ x }, "dx")} />
           <Num prefix="Y" value={dc.y} step={0.5} onChange={(y) => setD({ y }, "dy")} />
         </Prop>
+        <button className="ghost sm" onClick={() => {
+          const z = currentSize(p); setD({ x: 50, y: Math.round(50 * z.h / z.w), hidden: false });
+        }}><RotateCcw />Bring to center</button>
         <Prop stack label="Layer">
           <Seg full value={dc.front ? "front" : "back"} onChange={(v: string) => setD({ front: v === "front" })} options={[{ v: "back", label: "Behind device" }, { v: "front", label: "On top" }]} />
         </Prop>
