@@ -1,4 +1,5 @@
 // Vùng giữa: dải slide như trên store (hoặc 1 slide / Feature graphic) + thanh dưới: kiểm tra luật store, lật slide, zoom
+// Dải nhiều slide: Shift/⌘-click layer trên slide KHÁC → thêm vào vùng chọn xuyên slide (để căn thẳng hàng giữa các slide).
 // Thả file ảnh vào để thêm slide. Slide đang chọn nhận `edit` → kéo máy/chữ ngay trên canvas; bấm nền để bỏ chọn
 // Zoom: "fit" (vừa khung) hoặc tỉ lệ theo pixel ảnh xuất (1 = 100%). Ctrl/⌘+cuộn (hoặc chụm trackpad) zoom quanh con trỏ,
 // Ctrl +/−/0 = to/nhỏ/vừa khung. Giữ Space (hoặc nút giữa chuột) rồi kéo để di chuyển màn. Chuột phải → onMenu
@@ -8,7 +9,8 @@ import { ShieldCheck, TriangleAlert, CircleCheck, ChevronLeft, ChevronRight, Che
 import type { Project } from "@/lib/types";
 import { LOCALES, FEATURE_SIZE } from "@/lib/presets";
 import { checkProject, currentSize } from "@/lib/rules";
-import { SlideCanvas, FeatureCanvas, type CanvasEdit, type CanvasPick } from "./SlideCanvas";
+import { SlideCanvas, FeatureCanvas, type CanvasEdit, type CanvasPick, type XRef } from "./SlideCanvas";
+import type { LayerId } from "@/lib/layers";
 import { MenuButton, PopoverButton } from "./Popover";
 
 interface Props {
@@ -20,6 +22,8 @@ interface Props {
   onNav: (d: number) => void;
   onFiles: (f: FileList) => void;
   edit: CanvasEdit;
+  xsel?: XRef[]; // layer đang chọn ở các slide KHÁC (căn xuyên slide)
+  onXPick?: (i: number, l: LayerId) => void; // Shift/⌘-click layer trên slide khác
   welcome: boolean; // lần đầu vào, dự án toàn màn mẫu → hiện thẻ chào mừng
   onUpload: () => void;
   onSkipWelcome: () => void;
@@ -34,7 +38,7 @@ const isTyping = (t: EventTarget | null) => !!(t as HTMLElement)?.closest?.("inp
 // Gợi ý trong lớp phủ: dự án toàn màn mẫu thì ảnh sẽ thế vào các slide mẫu
 const allSampleHint = (p: Project) => (p.slides.every((s) => !s.img) ? "They'll replace the sample screens, in order" : "Each image becomes a new slide");
 
-export function Stage({ p, sel, tab, view, onPick, onNav, onFiles, edit, welcome, onUpload, onSkipWelcome, onOpenFile, onMenu }: Props) {
+export function Stage({ p, sel, tab, view, onPick, onNav, onFiles, edit, xsel, onXPick, welcome, onUpload, onSkipWelcome, onOpenFile, onMenu }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState({ w: 900, h: 600 });
   const [over, setOver] = useState(false);
@@ -148,12 +152,21 @@ export function Stage({ p, sel, tab, view, onPick, onNav, onFiles, edit, welcome
 
   let content;
   if (feature) content = <div className="slidewrap on" onContextMenu={(e) => ctx(e, -1)}><FeatureCanvas p={p} width={w} edit={edit} /></div>;
-  else if (view === "single") content = <div className="slidewrap on" onContextMenu={(e) => ctx(e, sel)}><SlideCanvas p={p} index={sel} width={w} size={z} edit={edit} /></div>;
-  else content = p.slides.map((s, i) => (
-    <div key={s.id} className={`slidewrap ${i === sel ? "on" : ""}`} onClick={() => onPick(i)} onContextMenu={(e) => ctx(e, i)}>
-      <SlideCanvas p={p} index={i} width={w} size={z} edit={i === sel ? edit : undefined} />
-    </div>
-  ));
+  else if (view === "single") content = <div className="slidewrap on" data-idx={sel} onContextMenu={(e) => ctx(e, sel)}><SlideCanvas p={p} index={sel} width={w} size={z} edit={edit} /></div>;
+  else content = p.slides.map((s, i) => {
+    // Slide khác: Shift/⌘-click trúng một layer = thêm/bớt layer đó vào vùng chọn XUYÊN SLIDE (không đổi slide đang sửa)
+    const xpick = (e: React.PointerEvent | React.MouseEvent) => {
+      if (i === sel || !(e.shiftKey || e.metaKey || e.ctrlKey)) return null;
+      return ((e.target as HTMLElement).closest("[data-pick]")?.getAttribute("data-pick") ?? null) as LayerId | null;
+    };
+    return (
+      <div key={s.id} className={`slidewrap ${i === sel ? "on" : ""}`} data-idx={i}
+        onPointerDown={(e) => { const l = xpick(e); if (l) { e.stopPropagation(); e.preventDefault(); onXPick?.(i, l); } }}
+        onClick={(e) => { if (xpick(e)) return; onPick(i); }} onContextMenu={(e) => ctx(e, i)}>
+        <SlideCanvas p={p} index={i} width={w} size={z} edit={i === sel ? edit : undefined} marks={i === sel ? undefined : xsel?.filter((x) => x.i === i).map((x) => x.l)} />
+      </div>
+    );
+  });
 
   return (
     <main className={`main ${over ? "drop" : ""} ${cvDark ? "cv-dark" : ""}`}

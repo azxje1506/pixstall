@@ -74,8 +74,10 @@ const { chromium } = require('playwright');
     r.altRight = Math.round(c0.x + c0.width - Math.max(...g2.map((q) => q.x + q.width)));
     need(Math.abs(r.altRight) <= 1.5, 'Alt+D');
     // 9) Đổi tên nhóm trong panel
-    const nameIn = pg.locator('.right input[aria-label="Group name"]'); await nameIn.fill('Sparkles'); await pg.waitForTimeout(100);
-    r.renamed = (await crumb()).includes('Sparkles');
+    // đổi tên ở cây Layers bên trái: double-click tên nhóm → ô nhập → Enter
+    await pg.locator('.litem.lgrp .lname').first().dblclick(); await pg.locator('.litem .lrename').fill('Sparkles'); await pg.keyboard.press('Enter'); await pg.waitForTimeout(150);
+    r.renamed = (await pg.locator('.litem.lgrp .lname').first().innerText()) === 'Sparkles';
+    need(r.renamed, 'rename in tree');
     // 10) Cây Layers: Shift-click thêm Device vào chọn (panel phải đã ở dạng nhóm → dùng cây bên trái)
     await bg(); await pg.waitForTimeout(100);
     const devRow = pg.locator('.litem:not(.nested):has(.lname:text-is("Device"))').first(); await devRow.scrollIntoViewIfNeeded();

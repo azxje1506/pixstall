@@ -50,6 +50,7 @@ export interface CanvasEdit {
   groups?: LayerGroup[]; // nhóm layer của slide/feature đang sửa
   enter?: string | null; // nhóm đang "vào trong" (double-click): bấm con thì chọn riêng con
   onEnter?: (gid: string | null) => void;
+  onPlain?: () => void; // bấm/kéo không giữ phím bổ trợ → Editor bỏ chọn xuyên slide
 }
 // Tay cầm của một layer máy: đổi cỡ (scale) và xoay (rot, ghi vào khoá key)
 type Tf = { scale?: { v: number; min: number; max: number; mul: number; set?: (v: number) => Record<string, unknown> }; rot?: { v: number; set: (a: number) => Record<string, unknown> } };
@@ -187,7 +188,7 @@ function toggleHL(el: HTMLElement, hl: string) {
 // tf(l) = tay cầm đổi cỡ/xoay của layer máy; crop(l) = [ix, iy] hiện tại nếu layer đó căn ảnh được (null = không)
 function useEditKit(edit: CanvasEdit | undefined, k: number, hEm: number, pos: (l: LayerId) => [number, number], move: (l: LayerId, x: number, y: number) => void,
   tf: (l: LayerId) => Tf | null, pxPerEm: number, crop: (l: LayerId) => CropInfo | null = () => null,
-  moveMany: (items: [LayerId, number, number][]) => void = () => {}) {
+  moveMany: (items: [LayerId, number, number][]) => void = () => {}, marks?: LayerId[]) {
   const [g, setG] = useState<Guides>({});
   const [editing, setEditing] = useState<string | null>(null); // id dòng chữ đang gõ
   const [bar, setBar] = useState<{ x: number; y: number } | null>(null); // thanh nổi Highlight (toạ độ màn hình)
@@ -240,7 +241,8 @@ function useEditKit(edit: CanvasEdit | undefined, k: number, hEm: number, pos: (
       <button title="Highlight (Ctrl+Shift+H)" onClick={() => edEl.current && toggleHL(edEl.current, hlRef.current)}><Highlighter />Highlight</button>
     </div>, document.body) : null;
 
-  if (!edit) return { hit: () => undefined, handle: undefined, guides: null, lineOf, root: undefined, grab: undefined };
+  // Không sửa: vẫn gắn data-pick (để căn layer XUYÊN SLIDE đo được vị trí) + lớp xsel khi layer nằm trong chọn từ slide khác
+  if (!edit) return { hit: (what: LayerId) => ({ "data-pick": what, className: marks?.includes(what) ? "ed-hit xsel" : "" }), handle: undefined, guides: null, lineOf, root: undefined, grab: undefined };
 
   const many = edit.multi && edit.multi.length > 1 ? edit.multi : null; // đang chọn nhiều layer
   // Kéo cả nhóm: cùng một độ dời cho mọi layer đang chọn, gióng theo khung bao của nhóm.
@@ -278,6 +280,7 @@ function useEditKit(edit: CanvasEdit | undefined, k: number, hEm: number, pos: (
       edit.onMulti?.(unit.every((x) => cur.includes(x)) ? cur.filter((x) => !unit.includes(x)) : [...cur, ...unit.filter((x) => !cur.includes(x))]);
       return;
     }
+    edit.onPlain?.(); // bấm thường = chọn lại từ đầu → bỏ các layer đã chọn ở slide khác
     // Phần tử thật của layer (khi bấm vào khung ma ngoài slide thì currentTarget là khung ma)
     const root = (e.currentTarget as HTMLElement).closest("[data-cv]") as HTMLElement, R = root.getBoundingClientRect();
     if (many?.includes(what)) {
@@ -400,7 +403,7 @@ function useEditKit(edit: CanvasEdit | undefined, k: number, hEm: number, pos: (
     if (e.button !== 0) return; e.stopPropagation();
     const add = e.shiftKey || e.metaKey || e.ctrlKey;
     const base = add ? (many ?? (isLayer(edit.sel) ? [edit.sel] : [])) : [];
-    if (!add) edit.onSel("slide");
+    if (!add) { edit.onPlain?.(); edit.onSel("slide"); }
     const cvEl = e.currentTarget as HTMLElement, R = cvEl.getBoundingClientRect(), [px, py] = ptr(e);
     const items = [...cvEl.querySelectorAll<HTMLElement>("[data-pick]")].filter((x) => getComputedStyle(x).visibility !== "hidden").map((x) => [x.dataset.pick as LayerId, rectEm(x, R, k)] as const);
     let ids: LayerId[] = [], moved = false;
@@ -550,7 +553,13 @@ function CanvasFrame({ cvRef, edit, kit, style, ghost, mbox, onCenter, children 
           onPointerDown={(e) => kit.grab?.(e, sel)} />
       )}
       <div className="cv-clip">{children}</div>
-      {mbox && <div className="ed-multibox" style={{ left: mbox.l, top: mbox.t, width: mbox.w, height: mbox.h }}><span>{edit.multi?.length} layers</span></div>}
+      {/* Chọn ≥2 layer: MỘT khung bao chung (gộp bounding box) + 4 góc + nhãn số layer/tên nhóm ở dưới */}
+      {mbox && (
+        <div className="ed-multibox" style={{ left: mbox.l, top: mbox.t, width: mbox.w, height: mbox.h }}>
+          <i className="nw" /><i className="ne" /><i className="sw" /><i className="se" />
+          <span>{edit.groups?.find((g) => g.ids.length === edit.multi?.length && g.ids.every((x) => edit.multi?.includes(x as LayerId)))?.name ?? `${edit.multi?.length} layers`}</span>
+        </div>
+      )}
       {kit.guides}
       {ghost && ghost.inside < 0.35 && (
         <button className="ed-bringback" onPointerDown={(e) => e.stopPropagation()} onClick={onCenter}>
@@ -566,7 +575,8 @@ export const screenRatio = (kind: "phone" | "tablet", t: Theme) => { const bz = 
 // Ảnh của slide i theo ngôn ngữ loc (máy chính, kèm cách căn của slide đó)
 const screenOf = (p: Project, i: number, sr: number, thumb: boolean | undefined, loc: string) => { const s = p.slides[i]; return s ? <Shot img={imgFor(s, loc)} mock={s.mock} c={s} thumb={thumb} sr={sr} /> : null; };
 
-export function SlideCanvas({ p, index, width, size, loc, edit }: { p: Project; index: number; width: number; size: SizePreset; loc?: string; edit?: CanvasEdit }) {
+// marks = layer của slide này đang nằm trong vùng chọn XUYÊN SLIDE (slide không phải slide đang sửa) → viền tím
+export function SlideCanvas({ p, index, width, size, loc, edit, marks }: { p: Project; index: number; width: number; size: SizePreset; loc?: string; edit?: CanvasEdit; marks?: LayerId[] }) {
   const s = p.slides[index], t = themeOf(p, s), n = p.slides.length;
   const L = loc ?? p.loc, k = width / 100;
   const cv = useRef<HTMLDivElement>(null);
@@ -596,7 +606,7 @@ export function SlideCanvas({ p, index, width, size, loc, edit }: { p: Project; 
       if (l === "device2" && s.img2) { const c = s.c2 ?? {}; return { v: [c.ix ?? 0, c.iy ?? 0, ...panRange(s.img2, c, r0)], set: (ix, iy) => ({ c2: { ...s.c2, ix, iy } }) }; }
       return null;
     },
-    (items) => s && edit?.onPatch(posPatch(s, items), "drag-multi"));
+    (items) => s && edit?.onPatch(posPatch(s, items), "drag-multi"), marks);
   const titleRaw = s ? textOf(s, L)[0] : "";
   useLayoutEffect(() => {
     if (!edit) return;
@@ -850,4 +860,28 @@ export function alignUnitPatch(holder: Holder, ls: LayerId[], edge: AlignEdge): 
   const dx = edge === "left" ? -u.l : edge === "right" ? 100 - u.r : edge === "hcenter" ? 50 - (u.l + u.r) / 2 : 0;
   const dy = edge === "top" ? -u.t : edge === "bottom" ? m.H - u.b : edge === "vcenter" ? m.H / 2 - (u.t + u.b) / 2 : 0;
   return posPatch(holder, m.rs.map(([l]) => { const [x, y] = posOf(holder, l); return [l, r1(x + dx), r1(y + dy)] as const; }));
+}
+
+// --- Căn layer XUYÊN SLIDE ---
+// refs = [index slide, layer]. Đo từng layer trong canvas của CHÍNH slide nó (.slidewrap[data-idx]) theo em → cùng hệ toạ độ khung,
+// gộp khung bao chung (hoặc lấy khung slide khi toFrame) rồi trả patch theo từng slide. Slide không hiện trên màn (chế độ 1 slide) thì bỏ qua
+export type XRef = { i: number; l: LayerId };
+export function alignCrossPatch(p: Project, refs: XRef[], edge: AlignEdge, toFrame: boolean): Map<number, Record<string, unknown>> | null {
+  const ms: { i: number; l: LayerId; r: Rect; H: number }[] = [];
+  for (const { i, l } of refs) {
+    const root = document.querySelector<HTMLElement>(`.slidewrap[data-idx="${i}"] [data-cv]`), el = root?.querySelector<HTMLElement>(`[data-pick="${l}"]`);
+    if (!root || !el) continue;
+    const R = root.getBoundingClientRect(), k = R.width / 100;
+    ms.push({ i, l, r: rectEm(el, R, k), H: R.height / k });
+  }
+  if (!ms.length) return null;
+  const u = toFrame ? { l: 0, t: 0, r: 100, b: ms[0].H } : unionRect(ms.map((m) => m.r));
+  const by = new Map<number, (readonly [LayerId, number, number])[]>();
+  for (const { i, l, r } of ms) {
+    const dx = edge === "left" ? u.l - r.l : edge === "right" ? u.r - r.r : edge === "hcenter" ? (u.l + u.r) / 2 - (r.l + r.r) / 2 : 0;
+    const dy = edge === "top" ? u.t - r.t : edge === "bottom" ? u.b - r.b : edge === "vcenter" ? (u.t + u.b) / 2 - (r.t + r.b) / 2 : 0;
+    const [x, y] = posOf(p.slides[i], l);
+    by.set(i, [...(by.get(i) ?? []), [l, r1(x + dx), r1(y + dy)] as const]);
+  }
+  return new Map([...by].map(([i, items]) => [i, posPatch(p.slides[i], items)]));
 }

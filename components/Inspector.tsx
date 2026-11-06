@@ -21,11 +21,11 @@ import { Seg, Slider, Group, Num, Prop, Tabs } from "./ui";
 import { ColorField } from "./ColorField";
 import { MenuButton, type MenuItem } from "./Popover";
 import type { CanvasPick, LayerPick } from "./SlideCanvas";
-import { isLayer, isDeco, decoOf, patchDeco, centerPatch, isHidden, layersOf, layerName as nameOf, extraOf, extraText, patchExtra, posOf, withPos, featText, setFeatText, fLayersOf, fIsHidden, fRemovable, fLayerName, phoneIdx, phoneOf, setPhone, phoneCount as phoneCountOf, treeOf, groupExact, groupById, expandGroups, makeGroup, ungroup, renameGroup, type LayerId } from "@/lib/layers";
+import { isLayer, isDeco, decoOf, patchDeco, centerPatch, isHidden, layersOf, layerName as nameOf, extraOf, extraText, patchExtra, posOf, withPos, featText, setFeatText, fLayersOf, fIsHidden, fRemovable, fLayerName, phoneIdx, phoneOf, setPhone, phoneCount as phoneCountOf, treeOf, groupExact, groupById, expandGroups, makeGroup, ungroup, type LayerId } from "@/lib/layers";
 import { imgSrc, imgMeta, putImage } from "@/lib/images";
 import { ASPECT } from "./Device";
 import { TEMPLATES, TPL_GROUPS, activeTemplate, applyTemplate, type Template } from "@/lib/templates";
-import { panRange, screenRatio, featureShot, alignPatch, alignManyPatch, alignUnitPatch, distributePatch, type AlignEdge } from "./SlideCanvas";
+import { panRange, screenRatio, featureShot, alignPatch, alignManyPatch, alignUnitPatch, distributePatch, type AlignEdge, type XRef } from "./SlideCanvas";
 import { layerIcon } from "./SlideList";
 
 type Update = (fn: (d: Project) => Project, tag?: string) => void;
@@ -313,9 +313,10 @@ function StyleTab({ sc, owned, onClearAll, onTemplate }: { sc: Scope; owned: num
 }
 
 type ImgKey = "img" | "img2";
-export function Inspector({ p, sel, tab, update, pick, multi, onMulti, enter, onPickGroup, onPickRow, onPickLayer, onToggleHidden, onRemoveLayer, addItems, onReplace, onReplaceFile, onDuplicate, onFlash, crop, onCrop }: {
+export function Inspector({ p, sel, tab, update, pick, multi, onMulti, enter, xrefs, onAlignCross, onXRemove, onPickGroup, onPickRow, onPickLayer, onToggleHidden, onRemoveLayer, addItems, onReplace, onReplaceFile, onDuplicate, onFlash, crop, onCrop }: {
   p: Project; sel: number; tab: "slide" | "feature"; update: Update; pick: CanvasPick;
   multi: LayerId[]; onMulti: (ls: LayerId[]) => void; // nhóm chọn ≥2 layer → panel Align/Distribute nhóm
+  xrefs: XRef[]; onAlignCross: (e: AlignEdge, toFrame: boolean) => void; onXRemove: (r: XRef) => void; // chọn xuyên slide (≥1 layer ở slide khác)
   enter: string | null; onPickGroup: (gid: string) => void; onPickRow: (l: LayerId, add?: boolean) => void; // nhóm đang vào trong · chọn nhóm · bấm dòng cây Layers
   onPickLayer: (l: CanvasPick) => void; onToggleHidden: (l: LayerPick) => void;
   onRemoveLayer: (l: LayerId) => void; addItems: () => MenuItem[];
@@ -417,6 +418,40 @@ export function Inspector({ p, sel, tab, update, pick, multi, onMulti, enter, on
   const pickRow = onPickRow;
   // Hiệu ứng trượt ngắn khi căn/dàn đều (lớp .ed-anim trên body ~220ms) — layer lướt tới chỗ mới thay vì nhảy cóc
   const glide = (fn: () => void) => { document.body.classList.add("ed-anim"); fn(); setTimeout(() => document.body.classList.remove("ed-anim"), 240); };
+  // Panel chọn XUYÊN SLIDE: căn layer ở nhiều slide cho thẳng hàng (vd. tiêu đề mọi slide cùng độ cao).
+  // Align theo khung bao chung (toạ độ trong khung slide) hoặc theo khung slide; danh sách layer xếp theo slide, × = bỏ khỏi chọn
+  const crossView = () => {
+    const slidesN = new Set(xrefs.map((r) => r.i)).size;
+    const no = (i: number) => `Slide ${String(i + 1).padStart(2, "0")}`;
+    const btn = ([e, tt, ic, kb]: (typeof ALIGNS)[number]) => <button key={e} className="ibtn" title={`${tt}  ·  ${kb}`} aria-label={tt} onClick={() => onAlignCross(e, toFrame)}>{ic}</button>;
+    return (
+      <aside className="right">{head}
+        <div className="slidebar">
+          <nav className="crumb" aria-label="Selection"><span className="cr-cur"><Layers2 />{xrefs.length} layers · {slidesN} slides</span></nav>
+        </div>
+        <div className="alignbar" role="toolbar" aria-label="Align across slides">
+          <span className="plab">Align</span>
+          <div className="aligngrp">{ALIGNS.slice(0, 3).map(btn)}</div>
+          <div className="aligngrp">{ALIGNS.slice(3).map(btn)}</div>
+        </div>
+        <Group title="Align to">
+          <Tabs value={toFrame ? "frame" : "sel"} onChange={(v) => setToFrame(v === "frame")} options={[{ v: "sel", label: "Selection" }, { v: "frame", label: "Slide" }]} />
+        </Group>
+        <Group title="Selected across slides">
+          <div className="llist">
+            {[...xrefs].sort((a, b) => a.i - b.i).map((r) => (
+              <div key={r.i + r.l} className="lrow">
+                <span className="lmain static"><span className="lico">{layerIcon(r.l, nameOf(p.slides[r.i], r.l))}</span><span className="lname">{nameOf(p.slides[r.i], r.l)}</span><span className="lsub">{no(r.i)}</span></span>
+                <button className="ibtn" title="Remove from selection" aria-label={`Remove ${nameOf(p.slides[r.i], r.l)} of ${no(r.i)}`} onClick={() => onXRemove(r)}><X /></button>
+              </div>
+            ))}
+          </div>
+          <p className="hint">Shift-click layers on other slides to add them · each slide keeps its own frame, so “Align top” puts every headline at the same height · Alt+A/H/D/W/V/S · Esc clears.</p>
+        </Group>
+      </aside>
+    );
+  };
+
   // Panel nhóm chọn. Hai dạng:
   //  • Chọn rời (Shift-click / kéo vùng): Align theo khung bao chọn hoặc theo slide, Distribute, nút Group (Ctrl+G)
   //  • Đúng một Group: tên sửa được, Align = dời CẢ CỤM theo khung slide (giữ bố cục trong nhóm), Distribute các con, Ungroup
@@ -453,11 +488,7 @@ export function Inspector({ p, sel, tab, update, pick, multi, onMulti, enter, on
             ))}
           </div>
         </div>
-        {grp ? (
-          <Group title="Group">
-            <Prop label="Name"><input className="field" aria-label="Group name" value={grp.name} onChange={(e) => apply(renameGroup(holder, grp.id, e.target.value), "gname")} /></Prop>
-          </Group>
-        ) : (
+        {grp ? null : (
           <Group title="Align to">
             <Tabs value={toFrame ? "frame" : "sel"} onChange={(v) => setToFrame(v === "frame")} options={[{ v: "sel", label: "Selection" }, { v: "frame", label: isFeature ? "Banner" : "Slide" }]} />
           </Group>
@@ -856,6 +887,7 @@ export function Inspector({ p, sel, tab, update, pick, multi, onMulti, enter, on
     <BgGroup sc={slideScope} />
   </>;
 
+  if (xrefs.length > 1) return crossView();
   if (many) return multiView(s, (pt, tg) => setSlide(pt as Partial<Slide>, tg), (l) => nameOf(s, l));
   return <aside className="right">{head}{crumb(actions)}{alignBar((e) => { const pt = layer && alignPatch(s, layer, e); if (pt) setSlide(pt as Partial<Slide>, "align"); })}{body}{filePicker}</aside>;
 }

@@ -197,3 +197,19 @@ body.ed-anim .ed-hit { transition: transform .2s cubic-bezier(.2,.8,.2,1), left 
 .crumb > .cr-grp { flex: none; font-size: 0; } /* cấp nhóm chỉ còn icon, tên nằm trong tooltip */
 .crumb > .cr-grp svg { margin-right: 0 !important; }
 .slidebar:has(.cr-grp) .gbtn { font-size: 0; gap: 0; } /* sâu 3 cấp: nút hành động chỉ còn icon */
+
+/* --- Khung chọn chung (≥2 layer) — thay khung nét đứt cũ ---
+   Một bounding box liền gộp mọi layer đang chọn + 4 ô góc + nhãn dưới đáy; từng layer chỉ còn viền mảnh mờ */
+.ed-hit.msel { outline: 1px solid color-mix(in srgb, var(--accent) 45%, transparent) !important; outline-offset: 0; }
+.ed-multibox { outline: 0; border: 1.5px solid var(--accent); margin: -1.5px 0 0 -1.5px; box-sizing: content-box; animation: ed-pop .14s ease-out; }
+.ed-multibox i { position: absolute; width: 8px; height: 8px; background: #fff; border: 1.5px solid var(--accent); border-radius: 2px; }
+.ed-multibox i.nw { left: -5px; top: -5px; } .ed-multibox i.ne { right: -5px; top: -5px; }
+.ed-multibox i.sw { left: -5px; bottom: -5px; } .ed-multibox i.se { right: -5px; bottom: -5px; }
+.ed-multibox span { left: 50%; top: auto; bottom: -30px; transform: translateX(-50%); }
+.ed-ghover { outline: 1px solid color-mix(in srgb, var(--accent) 80%, transparent); outline-offset: 2px; }
+.ed-hit.pre:not(.msel) { outline: 1px solid var(--accent) !important; outline-offset: 0; }
+/* layer được chọn trên slide KHÁC (căn xuyên slide) */
+.ed-hit.xsel { outline: 1.5px solid var(--accent) !important; outline-offset: 2px; cursor: pointer; }
+/* cây Layers: ô đổi tên nhóm tại chỗ; dòng không bấm được trong panel xuyên slide */
+.litem .lrename { flex: 1; min-width: 0; height: 22px; padding: 0 6px; border: 1.5px solid var(--accent); border-radius: 6px; background: var(--panel); font: inherit; font-weight: 600; outline: 0; }
+.lmain.static { cursor: default; }

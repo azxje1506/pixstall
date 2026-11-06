@@ -16,11 +16,11 @@ import { normalizeProject } from "@/lib/useProject";
 import { sampleProject } from "@/lib/presets";
 import { TranslateDialog } from "./TranslateDialog";
 import type { CanvasPick, LayerPick } from "./SlideCanvas";
-import { alignPatch, alignManyPatch, alignUnitPatch, type AlignEdge } from "./SlideCanvas";
+import { alignPatch, alignManyPatch, alignUnitPatch, alignCrossPatch, type AlignEdge, type XRef } from "./SlideCanvas";
 import { ContextMenu, type MenuItem } from "./Popover";
 import { putImage } from "@/lib/images";
-import { FilePlus2, FolderOpen, Save, Crop, CopyPlus, Trash2, ImageUp, RotateCcw, BringToFront, SendToBack, Heading, Type, Pilcrow, Tag } from "lucide-react";
-import { isFeat, fToggleHidden, fRemoveLayer, fLayerName, fCanAdd, setFeatText, phoneIdx, phoneOf, nameOfLayer, isLayer, isText, isDeco, isDevice, posOf, withPos, posPatch, withPrune, groupOf, groupById, groupExact, expandGroups, makeGroup, ungroup, toggleHidden as toggleH, removeLayer, layerName, canAdd, type LayerId } from "@/lib/layers";
+import { FilePlus2, FolderOpen, Save, Crop, CopyPlus, Trash2, ImageUp, RotateCcw, BringToFront, SendToBack, Heading, Type, Pilcrow, Tag, Pencil, Group, Ungroup, Eye, EyeOff } from "lucide-react";
+import { isFeat, fToggleHidden, fRemoveLayer, fLayerName, fCanAdd, setFeatText, phoneIdx, phoneOf, nameOfLayer, isLayer, isText, isDeco, isDevice, posOf, withPos, posPatch, withPrune, groupOf, groupById, groupExact, expandGroups, makeGroup, ungroup, renameGroup, fIsHidden, isHidden, toggleHidden as toggleH, removeLayer, layerName, canAdd, type LayerId } from "@/lib/layers";
 import { currentSize, themeOf, textOf } from "@/lib/rules";
 
 // Ảnh tải lên → kho ảnh (thu nhỏ nếu >4000px), trả "img:<id>"; file hỏng thì bỏ qua
@@ -41,6 +41,28 @@ export default function Editor() {
   const [multi, setMulti] = useState<LayerId[]>([]); // nhóm chọn ≥2 layer (Shift-click / kéo vùng); pick = layer mới nhất trong nhóm
   // Chọn đơn layer khác / về Slide → bỏ nhóm
   useEffect(() => { if (multi.length && (!isLayer(pick) || !multi.includes(pick))) setMulti([]); }, [pick, multi]);
+  // Chọn XUYÊN SLIDE: layer ở các slide khác (lưu theo id slide để không lệch khi đổi thứ tự). Slide đang sửa dùng pick/multi như cũ
+  const [xs, setXs] = useState<{ sid: string; l: LayerId }[]>([]);
+  const xsel: XRef[] = xs.map((x) => ({ i: p.slides.findIndex((s) => s.id === x.sid), l: x.l })).filter((x) => x.i >= 0 && x.i !== sel && (tab === "slide"));
+  const curSet = (): LayerId[] => (multi.length > 1 ? multi : isLayer(pick) ? [pick] : []);
+  // Toàn bộ vùng chọn xuyên slide (slide đang sửa + slide khác); chỉ có nghĩa khi có ít nhất 1 layer ở slide khác
+  const allRefs: XRef[] = xsel.length ? [...curSet().map((l) => ({ i: Math.min(sel, p.slides.length - 1), l })), ...xsel] : [];
+  const xPick = (i: number, l: LayerId) => {
+    const sid = p.slides[i]?.id; if (!sid) return;
+    const h = p.slides[i], unit = (groupOf(h, l)?.ids ?? [l]) as LayerId[]; // trúng con của nhóm → lấy cả nhóm
+    setXs((o) => { const has = unit.every((u) => o.some((x) => x.sid === sid && x.l === u)); return has ? o.filter((x) => !(x.sid === sid && unit.includes(x.l))) : [...o, ...unit.filter((u) => !o.some((x) => x.sid === sid && x.l === u)).map((u) => ({ sid, l: u }))]; });
+  };
+  // Căn xuyên slide: một bước Undo cho mọi slide liên quan
+  const alignCross = (edge: AlignEdge, toFrame: boolean) => {
+    const m = alignCrossPatch(p, allRefs, edge, toFrame); if (!m) return;
+    document.body.classList.add("ed-anim");
+    update((d) => ({ ...d, slides: d.slides.map((s, j) => (m.has(j) ? { ...s, ...m.get(j) } : s)) }), "align-x");
+    setTimeout(() => document.body.classList.remove("ed-anim"), 240);
+  };
+  // Đổi slide đang sửa / tab → bỏ chọn xuyên slide (trừ khi chính slide mới nằm trong vùng chọn thì giữ phần còn lại)
+  useEffect(() => { setXs([]); }, [sel, tab]);
+  useEffect(() => { if (pick === null) setXs([]); }, [pick]); // bấm nền ngoài slide = bỏ chọn hết
+
   // Nhóm đang "vào trong" (double-click con): tự thoát khi chọn thứ nằm ngoài nhóm đó
   const [enter, setEnter] = useState<string | null>(null);
   const holder = tab === "feature" ? p.feature : p.slides[Math.min(sel, p.slides.length - 1)];
@@ -56,7 +78,8 @@ export default function Editor() {
   const [hov, setHov] = useState<LayerPick | null>(null); // layer đang rê trên cây Layers
   const [crop, setCrop] = useState<LayerId | null>(null); // máy đang ở chế độ căn ảnh (double-click máy)
   useEffect(() => { if (crop && pick !== crop) setCrop(null); }, [pick, crop]); // chọn thứ khác → thoát căn ảnh
-  const [menu, setMenu] = useState<{ x: number; y: number; i: number; target: CanvasPick } | null>(null); // menu chuột phải (i = -1: feature)
+  const [menu, setMenu] = useState<{ x: number; y: number; i: number; target: CanvasPick; gid?: string } | null>(null); // menu chuột phải (i = -1: feature; gid = bấm trên dòng nhóm)
+  const [renaming, setRenaming] = useState<string | null>(null); // nhóm đang đổi tên tại chỗ trên cây Layers
   const addInput = useRef<HTMLInputElement>(null);
   const replaceInput = useRef<HTMLInputElement>(null);
   const n = p.slides.length;
@@ -88,6 +111,41 @@ export default function Editor() {
   // i = -1 → Feature graphic (mọi thao tác layer bên dưới)
   const patchF = (fn: (f: Feature) => Partial<Feature> | null) => update((d) => { const x = fn(d.feature); return x ? { ...d, feature: { ...d.feature, ...x } } : d; });
   const toggleHidden = (i: number, layer: LayerPick) => (i === -1 ? patchF((f) => fToggleHidden(f, layer)) : patchAt(i, (s) => toggleH(s, layer)));
+  // --- Nhóm trên cây Layers: ẩn/hiện cả nhóm (đang ẩn hết → hiện hết, ngược lại ẩn hết), đổi tên, rã, xoá ---
+  const setGroupHidden = (i: number, gid: string) => {
+    const fold = <T,>(h: T & { groups?: import("@/lib/types").LayerGroup[] }, hid: (x: T, l: LayerId) => boolean, tg: (x: T, l: LayerId) => Partial<T>) => {
+      const g = groupById(h, gid); if (!g) return null;
+      const v = !g.ids.every((l) => hid(h, l as LayerId)); let x = h as T; const out: Partial<T> = {};
+      for (const l of g.ids as LayerId[]) if (hid(x, l) !== v) { const pt = tg(x, l); Object.assign(out, pt); x = { ...x, ...pt }; }
+      return out;
+    };
+    if (i === -1) patchF((f) => fold(f, fIsHidden, fToggleHidden)); else patchAt(i, (s) => fold(s, isHidden, toggleH));
+  };
+  const renameAt = (i: number, gid: string, name: string | null) => {
+    setRenaming(null);
+    if (!name) return;
+    if (i === -1) patchF((f) => renameGroup(f, gid, name)); else patchAt(i, (s) => renameGroup(s, gid, name), "gname");
+  };
+  const ungroupAt = (i: number, gid: string) => {
+    const h = i === -1 ? p.feature : p.slides[i], g = h && groupById(h, gid); if (!g) return;
+    if (i === -1) patchF((f) => ungroup(f, gid)); else patchAt(i, (s) => ungroup(s, gid));
+    setEnter(null); flash(`${g.name} ungrouped`, true);
+  };
+  // Xoá mọi chữ/trang trí trong nhóm (máy không xoá được → ở lại, nhóm tự rã nếu còn < 2)
+  const deleteGroupAt = (i: number, gid: string) => {
+    const h = i === -1 ? p.feature : p.slides[i], g = h && groupById(h, gid); if (!g) return;
+    const del = (g.ids as LayerId[]).filter((l) => isText(l) || isDeco(l));
+    const fold = <T,>(x0: T, fn: (x: T, l: LayerId) => Partial<T> | null) => { let x = x0; const out: Partial<T> = {}; for (const l of del) { const pt = fn(x, l); if (pt) { Object.assign(out, pt); x = { ...x, ...pt }; } } return out; };
+    if (i === -1) patchF((f) => withPrune(f, { ...fold(f, fRemoveLayer), ...ungroup(f, gid) })); else patchAt(i, (s) => withPrune(s, { ...fold(s, removeLayer), ...ungroup(s, gid) }));
+    setPick("slide"); flash(`${g.name} deleted`, true);
+  };
+  // Chuột phải trên dòng cây Layers: chọn dòng đó trước (nếu chưa nằm trong vùng chọn) rồi mở menu
+  const rowMenu = (x: number, y: number, i: number, l: LayerId | null, gid?: string) => {
+    if (gid) pickGroup(i, gid);
+    else if (l && !(multi.includes(l) && (i === -1 ? tab === "feature" : i === idx))) pickLayer(i, l);
+    setMenu({ x, y, i, target: l ?? "slide", gid });
+  };
+
   // Xoá layer chữ (Headline/Subtitle/App name/Tagline xoá nội dung ở mọi ngôn ngữ; chữ tự do bỏ hẳn) → về cấp trên, có Undo
   const removeAt = (i: number, layer: LayerId) => {
     if (i === -1) {
@@ -223,6 +281,7 @@ export default function Editor() {
       // Đang ở trong nhóm → Esc chọn lại cả nhóm; lần nữa → về Slide
       if (e.key === "Escape") {
         if (crop) return setCrop(null);
+        if (xs.length) return setXs([]);
         const g = groupById(H, enter);
         if (g && multi.length < 2) { setEnter(null); return setGroup(g.ids as LayerId[]); }
         return setPick((x) => (isLayer(x) ? "slide" : null));
@@ -243,6 +302,7 @@ export default function Editor() {
       }
       // Alt + A/H/D (trái/giữa/phải) · W/V/S (trên/giữa/dưới): 1 layer hoặc cả nhóm → theo khung; nhiều layer rời → theo khung bao chọn
       const AK: Record<string, AlignEdge> = { KeyA: "left", KeyH: "hcenter", KeyD: "right", KeyW: "top", KeyV: "vcenter", KeyS: "bottom" };
+      if (e.altKey && !e.metaKey && !e.ctrlKey && AK[e.code] && allRefs.length > 1) { e.preventDefault(); return alignCross(AK[e.code], false); }
       if (e.altKey && !e.metaKey && !e.ctrlKey && AK[e.code] && isLayer(pick)) {
         e.preventDefault();
         const edge = AK[e.code], ls = multi.length > 1 ? multi : [pick];
@@ -307,9 +367,22 @@ export default function Editor() {
   };
 
   // Mục menu chuột phải: lớp trên/dưới (khi bấm trúng máy/chữ), đặt lại vị trí, rồi thao tác slide
-  const menuItems = (m: { i: number; target: CanvasPick }): MenuItem[] => {
+  const menuItems = (m: { i: number; target: CanvasPick; gid?: string }): MenuItem[] => {
     const isF = m.i === -1, it = isF ? p.feature : p.slides[m.i];
     if (!it) return [];
+    // Dòng nhóm: đổi tên, chọn, ẩn/hiện, rã, xoá
+    const g0 = groupById(it, m.gid);
+    if (g0) {
+      const allHid = (g0.ids as LayerId[]).every((l) => (isF ? fIsHidden(p.feature, l) : isHidden(it as Slide, l)));
+      return [
+        { label: "Rename", icon: <Pencil />, kbd: "Dbl-click", onClick: () => setRenaming(g0.id) },
+        { label: "Select group", icon: <Group />, onClick: () => pickGroup(m.i, g0.id) },
+        { label: allHid ? "Show group" : "Hide group", icon: allHid ? <Eye /> : <EyeOff />, onClick: () => setGroupHidden(m.i, g0.id) },
+        "sep",
+        { label: "Ungroup", icon: <Ungroup />, kbd: "Ctrl Shift G", onClick: () => ungroupAt(m.i, g0.id) },
+        { label: "Delete group", icon: <Trash2 />, danger: true, onClick: () => deleteGroupAt(m.i, g0.id) },
+      ];
+    }
     const patch = (x: Record<string, unknown>) => (isF ? patchFeature(x) : update((d) => ({ ...d, slides: d.slides.map((s, j) => (j === m.i ? { ...s, ...x } : s)) })));
     const front = it.front ?? "text";
     const tg = isLayer(m.target) ? m.target : null, grp = isDevice(tg) ? "device" : "text";
@@ -327,9 +400,19 @@ export default function Editor() {
     // Căn ảnh: máy chính, máy 2 của Duo (ảnh riêng) hoặc máy Feature graphic có ảnh riêng
     const canCrop = tg && (isF ? !!phoneOf(p.feature, phoneIdx(tg)).img && phoneIdx(tg) >= 0 : (tg === "device" && !!sl.img) || (tg === "device2" && !!sl.img2));
     if (canCrop && tg) items.push({ label: crop === tg ? "Done adjusting image" : "Adjust image…", icon: <Crop />, kbd: "Dbl-click", onClick: () => setCrop(crop === tg ? null : tg) });
-    if (tg && !isDevice(tg) && tg !== "icon") items.push({ label: `Delete ${nameOfLayer(it, tg).toLowerCase()}`, icon: <Trash2 />, kbd: "Del", danger: true, onClick: () => removeAt(m.i, tg) });
+    // Ẩn/hiện + nhóm: gom vùng chọn (khi layer này nằm trong vùng chọn ≥2), chọn/rã nhóm chứa nó
+    if (tg) {
+      const hid = isF ? fIsHidden(p.feature, tg) : isHidden(it as Slide, tg), gg = groupOf(it, tg), here = isF ? tab === "feature" : m.i === idx;
+      items.push("sep", { label: hid ? "Show layer" : "Hide layer", icon: hid ? <Eye /> : <EyeOff />, onClick: () => toggleHidden(m.i, tg) });
+      if (here && multi.length > 1 && multi.includes(tg) && !groupExact(it, multi)) items.push({ label: "Group selection", icon: <Group />, kbd: "Ctrl G", onClick: () => { const ls = expandGroups(it, multi), pt = makeGroup(it, ls, uid()); patchCur(pt, "group"); setGroup(ls); flash(`${pt.groups[pt.groups.length - 1].name} created`, true); } });
+      if (gg) items.push(
+        { label: `Select ${gg.name}`, icon: <Group />, onClick: () => pickGroup(m.i, gg.id) },
+        { label: "Ungroup", icon: <Ungroup />, kbd: "Ctrl Shift G", onClick: () => ungroupAt(m.i, gg.id) },
+      );
+    }
+    if (tg && !isDevice(tg) && tg !== "icon") items.push("sep", { label: `Delete ${nameOfLayer(it, tg).toLowerCase()}`, icon: <Trash2 />, kbd: "Del", danger: true, onClick: () => removeAt(m.i, tg) });
     if (!tg) items.push("sep", ...addItems(m.i).map((x) => (x === "sep" ? x : { ...x, label: `Add ${x.label.toLowerCase()}` })));
-    if (!isF) items.push(
+    if (!isF && !tg) items.push( // thao tác slide chỉ hiện khi bấm nền (menu của layer gọn hơn)
       "sep",
       { label: "Duplicate slide", icon: <CopyPlus />, kbd: "Ctrl D", onClick: () => dupAt(m.i) },
       { label: (it as Slide).img ? "Replace screenshot…" : "Upload screenshot…", icon: <ImageUp />, onClick: () => { setSel(m.i); pickFile("img"); } },
@@ -402,7 +485,8 @@ export default function Editor() {
           onFeature={() => { setTab("feature"); setPick("slide"); }}
           onMove={(from, to) => { update((d) => { const s = [...d.slides]; const [m] = s.splice(from, 1); s.splice(to, 0, m); return { ...d, slides: s }; }); setSel(to); }}
           onDelete={delAt} onDuplicate={dupAt} onReplace={replaceAt} onFiles={addFiles}
-          pick={pick} multi={multi} onLayer={pickLayer} onGroup={pickGroup} onToggleHidden={toggleHidden} onHover={setHov}
+          pick={pick} multi={multi} onLayer={pickLayer} onGroup={pickGroup}
+          onRowMenu={rowMenu} renaming={renaming} onRename={renameAt} onStartRename={setRenaming} onGroupHidden={setGroupHidden} onToggleHidden={toggleHidden} onHover={setHov}
           onRemoveLayer={(i, l) => removeAt(i, l)} addItems={addItems}
           onMenu={(x, y, i) => { setSel(i); setTab("slide"); setMenu({ x, y, i, target: null }); }}
           onUpload={() => addInput.current?.click()} />
@@ -410,9 +494,11 @@ export default function Editor() {
           welcome={welcome && fresh && allSample} onUpload={() => addInput.current?.click()} onSkipWelcome={() => setWelcome(false)} onOpenFile={() => openInput.current?.click()}
           onPick={(i) => { setSel(i); setTab("slide"); }}
           onNav={(d) => { setTab("slide"); setSel((idx + d + n) % n); }}
-          edit={{ sel: pick, hover: hov, onSel: setPick, onPatch: patchCur, crop, onCrop: setCrop, multi, onMulti: setGroup, groups: holder?.groups, enter, onEnter: setEnter }}
+          edit={{ sel: pick, hover: hov, onSel: setPick, onPatch: patchCur, crop, onCrop: setCrop, multi, onMulti: setGroup, groups: holder?.groups, enter, onEnter: setEnter, onPlain: () => setXs([]) }}
+          xsel={xsel} onXPick={xPick}
           onMenu={(x, y, i, target) => setMenu({ x, y, i, target })} />
-        <Inspector p={p} sel={idx} tab={tab} update={update} pick={pick} multi={multi} onMulti={setGroup} enter={enter} onPickGroup={(gid) => pickGroup(tab === "feature" ? -1 : idx, gid)}
+        <Inspector p={p} sel={idx} tab={tab} update={update} pick={pick} multi={multi} onMulti={setGroup} enter={enter}
+          xrefs={allRefs} onAlignCross={alignCross} onXRemove={(r) => { const sid = p.slides[r.i]?.id; if (r.i === idx) setGroup(curSet().filter((x) => x !== r.l)); else setXs((o) => o.filter((x) => !(x.sid === sid && x.l === r.l))); }} onPickGroup={(gid) => pickGroup(tab === "feature" ? -1 : idx, gid)}
           onPickRow={(l, add) => pickLayer(tab === "feature" ? -1 : idx, l, add)}
           onPickLayer={setPick} onToggleHidden={(l) => toggleHidden(tab === "feature" ? -1 : idx, l)}
           onRemoveLayer={(l) => removeAt(tab === "feature" ? -1 : idx, l)} addItems={() => addItems(tab === "feature" ? -1 : idx)}
