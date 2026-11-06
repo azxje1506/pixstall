@@ -48,6 +48,14 @@ export function withPos(s: Slide | Feature, l: LayerId, x: number, y: number): R
   return { extras: (sl.extras ?? []).map((e) => (e.id === id ? { ...e, x, y } : e)) };
 }
 
+// Dời nhiều layer một lúc: áp withPos lần lượt lên bản tạm của holder rồi gộp patch
+// (cần vì nhiều hình trang trí / chữ tự do cùng nằm trong một mảng decos/extras — ghi rời sẽ đè nhau)
+export function posPatch(s: Slide | Feature, items: (readonly [LayerId, number, number])[]): Record<string, unknown> {
+  let cur = s; const out: Record<string, unknown> = {};
+  for (const [l, x, y] of items) { const pt = withPos(cur, l, x, y); Object.assign(out, pt); cur = { ...cur, ...pt } as typeof s; }
+  return out;
+}
+
 export function patchExtra(s: Holder, l: LayerId, patch: Partial<TextItem>): { extras: TextItem[] } {
   const id = extraId(l);
   return { extras: (s.extras ?? []).map((e) => (e.id === id ? { ...e, ...patch } : e)) };

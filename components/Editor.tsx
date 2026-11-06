@@ -19,7 +19,7 @@ import type { CanvasPick, LayerPick } from "./SlideCanvas";
 import { ContextMenu, type MenuItem } from "./Popover";
 import { putImage } from "@/lib/images";
 import { FilePlus2, FolderOpen, Save, Crop, CopyPlus, Trash2, ImageUp, RotateCcw, BringToFront, SendToBack, Heading, Type, Pilcrow, Tag } from "lucide-react";
-import { isFeat, fToggleHidden, fRemoveLayer, fLayerName, fCanAdd, setFeatText, phoneIdx, phoneOf, nameOfLayer, isLayer, isText, isDeco, isDevice, posOf, withPos, toggleHidden as toggleH, removeLayer, layerName, canAdd, type LayerId } from "@/lib/layers";
+import { isFeat, fToggleHidden, fRemoveLayer, fLayerName, fCanAdd, setFeatText, phoneIdx, phoneOf, nameOfLayer, isLayer, isText, isDeco, isDevice, posOf, withPos, posPatch, toggleHidden as toggleH, removeLayer, layerName, canAdd, type LayerId } from "@/lib/layers";
 import { currentSize, themeOf, textOf } from "@/lib/rules";
 
 // Ảnh tải lên → kho ảnh (thu nhỏ nếu >4000px), trả "img:<id>"; file hỏng thì bỏ qua
@@ -37,6 +37,13 @@ export default function Editor() {
   const [welcome, setWelcome] = useState(true); // tắt sau khi user upload hoặc chọn xem mẫu
   const [narrowOk, setNarrowOk] = useState(false); // màn hẹp: user bấm "vẫn mở" 
   const [pick, setPick] = useState<CanvasPick>(null); // cấp đang chọn: null / slide / text / device
+  const [multi, setMulti] = useState<LayerId[]>([]); // nhóm chọn ≥2 layer (Shift-click / kéo vùng); pick = layer mới nhất trong nhóm
+  // Chọn đơn layer khác / về Slide → bỏ nhóm
+  useEffect(() => { if (multi.length && (!isLayer(pick) || !multi.includes(pick))) setMulti([]); }, [pick, multi]);
+  const setGroup = (ls: LayerId[]) => {
+    if (ls.length > 1) { setMulti(ls); setPick(ls[ls.length - 1]); }
+    else { setMulti([]); setPick(ls[0] ?? "slide"); }
+  };
   const [hov, setHov] = useState<LayerPick | null>(null); // layer đang rê trên cây Layers
   const [crop, setCrop] = useState<LayerId | null>(null); // máy đang ở chế độ căn ảnh (double-click máy)
   useEffect(() => { if (crop && pick !== crop) setCrop(null); }, [pick, crop]); // chọn thứ khác → thoát căn ảnh
@@ -192,6 +199,31 @@ export default function Editor() {
       // Esc lùi 1 cấp: layer → slide → không chọn (đang gõ chữ thì ô chữ tự xử lý Esc)
       if (e.key === "Escape") { if (crop) return setCrop(null); return setPick((x) => (isLayer(x) ? "slide" : null)); }
       // Delete / Backspace: xoá layer chữ đang chọn
+      // Ctrl/⌘+A: chọn mọi layer đang hiện trên slide/feature
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        const ids = [...document.querySelectorAll<HTMLElement>(".slidewrap.on [data-cv] [data-pick]")].filter((x) => getComputedStyle(x).visibility !== "hidden").map((x) => x.dataset.pick as LayerId);
+        setGroup(ids); return;
+      }
+      // Nhóm chọn: Delete xoá mọi chữ/trang trí trong nhóm (máy thì bỏ qua) — một bước Undo; mũi tên nhích cả nhóm
+      if (multi.length > 1) {
+        const F = tab === "feature", cur = F ? p.feature : p.slides[idx];
+        if (e.key === "Delete" || e.key === "Backspace") {
+          e.preventDefault();
+          const del = multi.filter((l) => isText(l) || isDeco(l));
+          if (!del.length) return;
+          const fold = <T,>(h: T, fn: (x: T, l: LayerId) => Partial<T> | null) => { let x = h; const out: Partial<T> = {}; for (const l of del) { const pt = fn(x, l); if (pt) { Object.assign(out, pt); x = { ...x, ...pt }; } } return out; };
+          if (F) patchF((f) => fold(f, fRemoveLayer)); else patchAt(idx, (s) => fold(s, removeLayer));
+          setPick("slide"); flash(`${del.length} layers deleted`, true); return;
+        }
+        const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+        if (d) {
+          e.preventDefault();
+          const st = e.shiftKey ? 2 : 0.5, r = (v: number) => Math.round(v * 10) / 10;
+          patchCur(posPatch(cur, multi.map((l) => { const [x, y] = posOf(cur, l); return [l, r(x + d[0] * st), r(y + d[1] * st)] as const; })), "nudge");
+          return;
+        }
+      }
       if ((e.key === "Delete" || e.key === "Backspace") && (isText(isLayer(pick) ? pick : null) || isDeco(isLayer(pick) ? pick : null))) { e.preventDefault(); removeAt(tab === "feature" ? -1 : idx, pick as LayerId); return; }
       const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
       if (!dir) return;
@@ -327,9 +359,9 @@ export default function Editor() {
           welcome={welcome && fresh && allSample} onUpload={() => addInput.current?.click()} onSkipWelcome={() => setWelcome(false)} onOpenFile={() => openInput.current?.click()}
           onPick={(i) => { setSel(i); setTab("slide"); }}
           onNav={(d) => { setTab("slide"); setSel((idx + d + n) % n); }}
-          edit={{ sel: pick, hover: hov, onSel: setPick, onPatch: patchCur, crop, onCrop: setCrop }}
+          edit={{ sel: pick, hover: hov, onSel: setPick, onPatch: patchCur, crop, onCrop: setCrop, multi, onMulti: setGroup }}
           onMenu={(x, y, i, target) => setMenu({ x, y, i, target })} />
-        <Inspector p={p} sel={idx} tab={tab} update={update} pick={pick}
+        <Inspector p={p} sel={idx} tab={tab} update={update} pick={pick} multi={multi} onMulti={setGroup}
           onPickLayer={setPick} onToggleHidden={(l) => toggleHidden(tab === "feature" ? -1 : idx, l)}
           onRemoveLayer={(l) => removeAt(tab === "feature" ? -1 : idx, l)} addItems={() => addItems(tab === "feature" ? -1 : idx)}
           crop={crop} onCrop={(l) => { if (l) setPick(l); setCrop(l); }}
