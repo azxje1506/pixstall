@@ -9,7 +9,7 @@
 // Mọi thay đổi đi qua update(fn, tag) — tag gộp các lần kéo slider thành 1 bước undo
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ImageUp, CopyPlus, ImageOff, RotateCcw, Smartphone, EyeOff, Eye, TextAlignStart, TextAlignCenter, Sun, Moon, Type,
-  PanelBottom, ArrowDownToLine, Copy, MoveRight, CopyCheck, ChevronRight, Frame, Highlighter, Plus, Trash2, Crop, Link2, Languages, Columns2, AlignCenter, GalleryHorizontalEnd, Image as ImageIcon, LocateFixed } from "lucide-react";
+  PanelBottom, ArrowDownToLine, Copy, MoveRight, CopyCheck, ChevronRight, Frame, Highlighter, Plus, Trash2, Crop, Link2, Languages, Columns2, AlignCenter, GalleryHorizontalEnd, Image as ImageIcon, LocateFixed, AlignStartVertical, AlignCenterVertical, AlignEndVertical, AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal } from "lucide-react";
 import type { Deco, Project, Slide, Theme, ThemeKey, Feature, Layout, Tilt3D, FrameStyle, FrameColor, Bg, TextItem, ImgFit, PhoneCfg } from "@/lib/types";
 import { FONTS, FRAME_COLORS, GRADIENTS, TILT_PRESETS, DEFAULT_THEME, LOCALES, uid } from "@/lib/presets";
 import { DECOS, DECO_GROUPS, decoDef, decoColor, decoSize } from "@/lib/decos";
@@ -24,7 +24,7 @@ import { isLayer, isDeco, decoOf, patchDeco, centerPatch, isHidden, layersOf, la
 import { imgSrc, imgMeta, putImage } from "@/lib/images";
 import { ASPECT } from "./Device";
 import { TEMPLATES, TPL_GROUPS, activeTemplate, applyTemplate, type Template } from "@/lib/templates";
-import { panRange, screenRatio, featureShot } from "./SlideCanvas";
+import { panRange, screenRatio, featureShot, alignPatch, type AlignEdge } from "./SlideCanvas";
 import { layerIcon } from "./SlideList";
 
 type Update = (fn: (d: Project) => Project, tag?: string) => void;
@@ -385,6 +385,18 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
       <span className="row g4">{actions}</span>
     </div>
   );
+  // Thanh căn lề cho layer đang chọn (dưới breadcrumb): 3 nút ngang · 3 nút dọc, căn theo khung slide/banner
+  const ALIGNS: [AlignEdge, string, ReactNode][] = [
+    ["left", "Align left", <AlignStartVertical key="l" />], ["hcenter", "Align horizontal center", <AlignCenterVertical key="hc" />], ["right", "Align right", <AlignEndVertical key="r" />],
+    ["top", "Align top", <AlignStartHorizontal key="t" />], ["vcenter", "Align vertical center", <AlignCenterHorizontal key="vc" />], ["bottom", "Align bottom", <AlignEndHorizontal key="b" />],
+  ];
+  const alignBar = (onAlign: (edge: AlignEdge) => void) => layer && (
+    <div className="alignbar" role="toolbar" aria-label="Align to frame">
+      <span className="plab">Align</span>
+      <div className="aligngrp">{ALIGNS.slice(0, 3).map(([e, tt, ic]) => <button key={e} className="ibtn" title={tt} aria-label={tt} onClick={() => onAlign(e)}>{ic}</button>)}</div>
+      <div className="aligngrp">{ALIGNS.slice(3).map(([e, tt, ic]) => <button key={e} className="ibtn" title={tt} aria-label={tt} onClick={() => onAlign(e)}>{ic}</button>)}</div>
+    </div>
+  );
 
   // Bọc phần đang bôi đen trong ô (tiêu đề/phụ đề/chữ tự do) bằng *…* (bấm lại khi đã bọc thì gỡ)
   const highlight = (val: string, write: (v: string) => void) => {
@@ -581,7 +593,7 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
       </Group>
       <BgGroup sc={project} />
     </>;
-    return <aside className="right">{head}{crumb(actions)}{body}{filePicker}</aside>;
+    return <aside className="right">{head}{crumb(actions)}{alignBar((e) => { const pt = layer && alignPatch(f, layer, e); if (pt) setFeature(pt as Partial<Feature>, "align"); })}{body}{filePicker}</aside>;
   }
 
   // ===== Slide =====
@@ -760,5 +772,5 @@ export function Inspector({ p, sel, tab, update, pick, onPickLayer, onToggleHidd
     <BgGroup sc={slideScope} />
   </>;
 
-  return <aside className="right">{head}{crumb(actions)}{body}{filePicker}</aside>;
+  return <aside className="right">{head}{crumb(actions)}{alignBar((e) => { const pt = layer && alignPatch(s, layer, e); if (pt) setSlide(pt as Partial<Slide>, "align"); })}{body}{filePicker}</aside>;
 }

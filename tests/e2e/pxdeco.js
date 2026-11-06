@@ -33,30 +33,45 @@ const { chromium } = require('playwright');
   await pg.waitForTimeout(150); const afterSize = await el.boundingBox();
   if (afterSize.width <= beforeSize.width + 3) throw new Error('Resize did not enlarge decoration');
   r.resized = true;
-  const edgeStart = await el.boundingBox();
-  await pg.mouse.move(edgeStart.x + edgeStart.width/2, edgeStart.y + edgeStart.height/2); await pg.mouse.down();
-  await pg.mouse.move(1435, 895, {steps: 8}); await pg.mouse.up(); await pg.waitForTimeout(150);
-  const eb = await el.boundingBox(), cb = await pg.locator('.slidewrap.on [data-cv]').boundingBox();
-  if (eb.x + eb.width/2 > cb.x + cb.width || eb.y + eb.height/2 > cb.y + cb.height) throw new Error('Decoration escaped canvas');
-  r.dragBounded = true;
+  const cvb = () => pg.locator('.slidewrap.on [data-cv]').boundingBox();
+  // Kéo trang trí ra ngoài khung: được phép; hiện khung ma ở phần ngoài; kéo khung ma để đưa lại vào
+  const e0 = await el.boundingBox(), c0 = await cvb();
+  await pg.mouse.move(e0.x + e0.width/2, e0.y + e0.height/2); await pg.mouse.down();
+  await pg.mouse.move(c0.x + c0.width + 4, e0.y + e0.height/2, {steps: 8}); await pg.mouse.up(); await pg.waitForTimeout(200);
+  const e1 = await el.boundingBox();
+  r.decoOut = e1.x + e1.width/2 > c0.x + c0.width - 1;
+  if (!r.decoOut) throw new Error('Decoration could not leave the frame');
+  r.ghost = await pg.locator('.slidewrap.on .ed-ghost').count();
+  if (r.ghost !== 1) throw new Error('No selection box outside the frame');
+  const gb = await pg.locator('.slidewrap.on .ed-ghost').boundingBox();
+  await pg.screenshot({ path: D + 'ghost.png' });
+  await pg.mouse.move(gb.x + gb.width - 4, gb.y + gb.height/2); await pg.mouse.down();
+  await pg.mouse.move(gb.x + gb.width - 4 - c0.width/2, gb.y + gb.height/2, {steps: 8}); await pg.mouse.up(); await pg.waitForTimeout(200);
+  const e2 = await el.boundingBox();
+  r.ghostDragBack = e2.x + e2.width < c0.x + c0.width && (await pg.locator('.slidewrap.on .ed-ghost').count()) === 0;
+  if (!r.ghostDragBack) throw new Error('Could not drag back via ghost');
+  // Align: trái / phải / dưới khớp mép khung
+  await pg.click('.right button[aria-label="Align left"]'); await pg.waitForTimeout(150);
+  let a = await el.boundingBox(); r.alignLeft = Math.round(a.x - c0.x);
+  await pg.click('.right button[aria-label="Align right"]'); await pg.waitForTimeout(150);
+  a = await el.boundingBox(); r.alignRight = Math.round(c0.x + c0.width - a.x - a.width);
+  await pg.click('.right button[aria-label="Align bottom"]'); await pg.waitForTimeout(150);
+  a = await el.boundingBox(); r.alignBottom = Math.round(c0.y + c0.height - a.y - a.height);
+  if (Math.abs(r.alignLeft) > 1 || Math.abs(r.alignRight) > 1 || Math.abs(r.alignBottom) > 1) throw new Error('Align off ' + [r.alignLeft, r.alignRight, r.alignBottom]);
   await pg.click('.right button[aria-label="Bring to center"]'); await pg.waitForTimeout(150);
-  const center = await el.boundingBox(), canvasBox = await pg.locator('.slidewrap.on [data-cv]').boundingBox();
-  if (Math.abs(center.x + center.width/2 - canvasBox.x - canvasBox.width/2) > 3) throw new Error('Center failed');
+  const center = await el.boundingBox();
+  if (Math.abs(center.x + center.width/2 - c0.x - c0.width/2) > 3) throw new Error('Center failed');
   r.centered = true;
-  // Thiết bị: kéo ra xa vẫn còn trong khung; dữ liệu cũ nằm hẳn ngoài → hiện nút Bring to center trên canvas
+  // Máy: kéo hẳn ra ngoài → khung ma + nút Bring to center trên slide; bấm → về lại, nút biến mất
   const dev = pg.locator('.slidewrap.on [data-pick="device"]'), d0 = await dev.boundingBox();
-  await pg.mouse.move(d0.x + d0.width/2, d0.y + d0.height/2); await pg.mouse.down(); await pg.mouse.move(5, 5, {steps: 8}); await pg.mouse.up(); await pg.waitForTimeout(150);
-  const d1 = await dev.boundingBox(), cv1 = await pg.locator('.slidewrap.on [data-cv]').boundingBox();
-  if (d1.x + d1.width/2 < cv1.x || d1.y + d1.height/2 < cv1.y) throw new Error('Device escaped canvas');
-  r.deviceBounded = true;
-  await pg.click('.right button[aria-label="Bring to center"]'); await pg.waitForTimeout(150);
-  await el.click({ force: true }); await pg.waitForTimeout(100);
-  await pg.locator('.right .num').filter({ hasText: 'X' }).last().locator('input').fill('400'); await pg.keyboard.press('Enter'); await pg.waitForTimeout(250);
+  await pg.mouse.move(d0.x + d0.width/2, d0.y + d0.height/2); await pg.mouse.down(); await pg.mouse.move(d0.x + d0.width/2 + c0.width * 1.1, d0.y + d0.height/2, {steps: 10}); await pg.mouse.up(); await pg.waitForTimeout(250);
   r.bringBackPill = await pg.locator('.slidewrap.on .ed-bringback').count();
+  await pg.screenshot({ path: D + 'bringback.png' });
   if (r.bringBackPill !== 1) throw new Error('No bring-back button for off-canvas layer');
   await pg.click('.slidewrap.on .ed-bringback'); await pg.waitForTimeout(200);
-  r.pillGone = (await pg.locator('.slidewrap.on .ed-bringback').count()) === 0;
-  await pg.screenshot({ path: D + 'bringback.png' });
+  r.pillGone = (await pg.locator('.slidewrap.on .ed-bringback').count()) === 0 && (await pg.locator('.slidewrap.on .ed-ghost').count()) === 0;
+  if (!r.pillGone) throw new Error('Bring back did not restore device');
+  await el.click({ force: true }); await pg.waitForTimeout(100); r.selAfter = await pg.locator('.right .crumb').innerText().catch(()=>'');
   // 4) Delete + Undo
   await pg.keyboard.press('Delete'); await pg.waitForTimeout(150); r.afterDel = await decos();
   await pg.keyboard.press('Control+z'); await pg.waitForTimeout(150); r.afterUndo = await decos();
@@ -71,11 +86,12 @@ const { chromium } = require('playwright');
   // 6) Nền Blur: khác gradient (có lớp ảnh mờ)
   await pg.click('.tcard:has-text("Violet Night")'); await pg.waitForTimeout(200);
   await pg.click('.right .seg button:has-text("Blur")'); await pg.waitForTimeout(400);
-  r.blurLayers = await pg.locator('.slidewrap.on [data-cv] > div[style*="blur("]').count();
+  r.blurLayers = await pg.locator('.slidewrap.on [data-cv] .cv-clip > div[style*="blur("]').count();
   await pg.screenshot({ path: D + 'deco-blur.png' });
   await pg.click('.right .seg button:text-is("Color")'); await pg.waitForTimeout(150);
   r.solidPresets = await pg.locator('.right .swatches button[aria-label^="Color #"]').count();
   if (r.solidPresets !== 8) throw new Error('Wrong color presets');
+  r.swatchRing = await pg.locator('.right .swatches button.on').first().evaluate((e) => getComputedStyle(e).outlineWidth + '+' + getComputedStyle(e).outlineOffset).catch(() => 'none');
   await pg.locator('.right .swatches button[aria-label="Color #BEF264"]').click();
   if (!(await pg.locator('.right .seg button:text-is("Color")').getAttribute('class') || '').includes('on')) throw new Error('Color preset switched mode');
   // 7) Hover menu File: chữ không trắng (sáng + tối)

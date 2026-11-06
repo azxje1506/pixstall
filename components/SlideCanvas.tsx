@@ -52,7 +52,7 @@ type Tf = { scale?: { v: number; min: number; max: number; mul: number; set?: (v
 type CropInfo = { v: [number, number, number, number]; set: (ix: number, iy: number) => Record<string, unknown> };
 type Rect = { l: number; t: number; r: number; b: number };
 // Lớp phủ khi sửa (em): đường gióng x/y, thước đo khoảng cách m, nhãn số tip
-type Guides = { edge?: boolean; x?: number; y?: number; m?: { x1: number; y1: number; x2: number; y2: number; label: string }; tip?: { x: number; y: number; text: string } };
+type Guides = { x?: number; y?: number; m?: { x1: number; y1: number; x2: number; y2: number; label: string }; tip?: { x: number; y: number; text: string } };
 
 const SNAP = 1.2; // em: trong khoảng này thì hút
 const r1 = (v: number) => Math.round(v * 10) / 10;
@@ -226,12 +226,14 @@ function useEditKit(edit: CanvasEdit | undefined, k: number, hEm: number, pos: (
       <button title="Highlight (Ctrl+Shift+H)" onClick={() => edEl.current && toggleHL(edEl.current, hlRef.current)}><Highlighter />Highlight</button>
     </div>, document.body) : null;
 
-  if (!edit) return { hit: () => undefined, handle: undefined, guides: null, lineOf, root: undefined };
+  if (!edit) return { hit: () => undefined, handle: undefined, guides: null, lineOf, root: undefined, grab: undefined };
 
   const drag = (e: RPE, what: LayerId) => {
     if (e.button !== 0 || (e.target as HTMLElement).isContentEditable) return;
     e.stopPropagation(); edit.onSel(what);
-    const el = e.currentTarget as HTMLElement, root = el.closest("[data-cv]") as HTMLElement, R = root.getBoundingClientRect();
+    // Phần tử thật của layer (khi bấm vào khung ma ngoài slide thì currentTarget là khung ma)
+    const root = (e.currentTarget as HTMLElement).closest("[data-cv]") as HTMLElement, R = root.getBoundingClientRect();
+    const el = (root.querySelector(`[data-pick="${what}"]`) as HTMLElement | null) ?? (e.currentTarget as HTMLElement);
     // Đang căn ảnh: kéo = dời ảnh trong màn, 1:1 theo cỡ màn (ix/iy = % bề ngang/cao màn), giới hạn ±100%
     const c0 = edit.crop === what ? crop(what) : null;
     if (c0) {
@@ -255,10 +257,6 @@ function useEditKit(edit: CanvasEdit | undefined, k: number, hEm: number, pos: (
       let x = bx + mx, y = by + my;
       if (sx) { x += sx.d; ng.x = sx.at; } else if (!free && Math.abs(x) < SNAP) x = 0;
       if (sy) { y += sy.d; ng.y = sy.at; } else if (!free && Math.abs(y) < SNAP) y = 0;
-      // Mọi layer: tâm luôn nằm trong khung (cách mép 2em) → luôn còn một nửa để bấm kéo lại; vẫn cho tràn viền
-      const ncx = cc[0] + x - bx, ncy = cc[1] + y - by;
-      const kx = clamp(ncx, 2, 98) - ncx, ky = clamp(ncy, 2, hEm - 2) - ncy;
-      if (kx || ky) { x += kx; y += ky; ng.edge = true; }
       if (near) ng.m = measure({ l: r0.l + x - bx, r: r0.r + x - bx, t: r0.t + y - by, b: r0.b + y - by }, near, pxPerEm);
       setG(ng);
       move(what, r1(x), r1(y));
@@ -317,7 +315,6 @@ function useEditKit(edit: CanvasEdit | undefined, k: number, hEm: number, pos: (
   const m = g.m;
   const guides = (
     <>
-      {g.edge && <div className="ed-edge" />}
       {g.x !== undefined && <div className="ed-guide v" style={{ left: `${g.x}em` }} />}
       {g.y !== undefined && <div className="ed-guide h" style={{ top: `${g.y}em` }} />}
       {m && (
@@ -332,7 +329,7 @@ function useEditKit(edit: CanvasEdit | undefined, k: number, hEm: number, pos: (
   );
   // Bấm nền slide (chỗ không có layer) → chọn cấp Slide
   const root = { onPointerDown: (e: RPE) => { if (e.button !== 0) return; e.stopPropagation(); edit.onSel("slide"); } };
-  return { hit, handle, guides, lineOf, root };
+  return { hit, handle, guides, lineOf, root, grab: drag };
 }
 
 // Cỡ ảnh so với màn (rx = rộng ảnh / rộng màn, ry = cao ảnh / cao màn) sau Fill (phủ kín) hoặc Fit (hiện trọn), chưa tính zoom
@@ -383,7 +380,7 @@ function renderDecos(items: Deco[] | undefined, front: boolean, t: Theme, kit: K
     const def = decoDef(d.kind), c = d.color || decoColor(def.def, t), c2 = d.color2 || decoColor(def.def2 ?? "white", t);
     return (
       <div key={d.id} {...kit.hit(`d:${d.id}` as LayerId)} style={{ position: "absolute", left: `${d.x}em`, top: `${d.y}em`, width: `${d.size}em`, height: `${d.size * def.ar}em`,
-        transform: `translate(-50%,-50%) rotate(${d.rot ?? 0}deg)`, zIndex: front ? 5 : 1, opacity: d.opacity ?? 1, ...(d.hidden ? { visibility: "hidden" as const } : {}) }}>
+        transform: `translate(-50%,-50%) rotate(${d.rot ?? 0}deg)`, zIndex: front ? 7 : 1, opacity: d.opacity ?? 1, ...(d.hidden ? { visibility: "hidden" as const } : {}) }}>
         <div style={{ width: "100%", height: "100%", pointerEvents: "none" }} dangerouslySetInnerHTML={{ __html: def.svg(c, c2) }} />
         {kit.hit(`d:${d.id}` as LayerId)?.className.includes(" sel") && kit.handle}
       </div>
@@ -410,6 +407,54 @@ function BlurBackdrop({ t, img, mock, thumb }: { t: Theme; img: string | null | 
   );
 }
 
+// --- Khung canvas khi sửa ---
+// Không sửa (xuất ảnh, thumbnail): 1 lớp overflow hidden như cũ.
+// Đang sửa: khung ngoài overflow visible (nền vẫn chỉ vẽ trong khung), nội dung nằm trong lớp .cv-clip cắt viền;
+// layer đang chọn có phần lọt ra ngoài → vẽ "khung ma" (viền + nền nhạt) đúng kích thước thật, nằm DƯỚI lớp cắt nên chỉ hiện/bắt chuột ở phần ngoài khung → kéo lại được
+// Lọt >65% ra ngoài → thêm nút "Bring to center" dưới đáy slide
+type Ghost = { l: number; t: number; w: number; h: number; inside: number } | null;
+function useGhost(cv: React.RefObject<HTMLDivElement | null>, sel: CanvasPick | undefined) {
+  const [g, setG] = useState<Ghost>(null);
+  const key = useRef("");
+  useLayoutEffect(() => {
+    let next: Ghost = null;
+    const root = cv.current;
+    if (root && sel && sel !== "slide") {
+      const el = root.querySelector<HTMLElement>(`[data-pick="${sel}"]`);
+      if (el) {
+        const a = el.getBoundingClientRect(), b = root.getBoundingClientRect();
+        const iw = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)), ih = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+        const area = a.width * a.height, inside = area ? (iw * ih) / area : 1;
+        if (inside < 0.999) next = { l: a.left - b.left, t: a.top - b.top, w: a.width, h: a.height, inside };
+      }
+    }
+    const k = next ? [next.l, next.t, next.w, next.h, next.inside].map((v) => v.toFixed(1)).join() : "";
+    if (k !== key.current) { key.current = k; setG(next); }
+  });
+  return g;
+}
+function CanvasFrame({ cvRef, edit, kit, style, ghost, onCenter, children }: {
+  cvRef?: React.Ref<HTMLDivElement>; edit?: CanvasEdit; kit: Kit; style: CSSProperties; ghost: Ghost; onCenter: () => void; children: ReactNode;
+}) {
+  if (!edit) return <div data-cv ref={cvRef} style={{ position: "relative", overflow: "hidden", ...style }}>{children}</div>;
+  const sel = edit.sel as LayerId;
+  return (
+    <div data-cv ref={cvRef} {...kit.root} style={{ position: "relative", overflow: "visible", ...style }}>
+      {ghost && (
+        <div className="ed-ghost" title="Drag to move back into the frame" style={{ left: ghost.l, top: ghost.t, width: ghost.w, height: ghost.h }}
+          onPointerDown={(e) => kit.grab?.(e, sel)} />
+      )}
+      <div className="cv-clip">{children}</div>
+      {kit.guides}
+      {ghost && ghost.inside < 0.35 && (
+        <button className="ed-bringback" onPointerDown={(e) => e.stopPropagation()} onClick={onCenter}>
+          Layer is outside the frame · <b>Bring to center</b>
+        </button>
+      )}
+    </div>
+  );
+}
+
 // Tỉ lệ rộng/cao của màn trong máy (trừ viền) theo loại máy + theme
 export const screenRatio = (kind: "phone" | "tablet", t: Theme) => { const bz = t.frame === "none" ? 0 : t.bezel / 100; return (1 - 2 * bz) / (ASPECT[kind] - 2 * bz); };
 // Ảnh của slide i theo ngôn ngữ loc (máy chính, kèm cách căn của slide đó)
@@ -420,7 +465,7 @@ export function SlideCanvas({ p, index, width, size, loc, edit }: { p: Project; 
   const L = loc ?? p.loc, k = width / 100;
   const cv = useRef<HTMLDivElement>(null);
   const [lines, setLines] = useState(0); // số dòng tiêu đề (chỉ đo khi đang sửa)
-  const [outside, setOutside] = useState(false); // layer đang chọn lọt ra ngoài khung (<35% diện tích còn trong khung)
+
   const hEm = (100 * size.h) / size.w;
   const centered = s && (s.layout === "center" || s.layout === "bleed" || s.layout === "bottom");
   const duo = s?.layout === "duo";
@@ -451,16 +496,7 @@ export function SlideCanvas({ p, index, width, size, loc, edit }: { p: Project; 
     const h = cv.current?.querySelector<HTMLElement>('[data-line="title"]');
     setLines(h ? Math.round(h.getBoundingClientRect().height / ((width / 100) * t.tsize * t.tlh)) : 0);
   }, [edit, titleRaw, width, t.tsize, t.tlh, t.font, t.tweight, s?.tw, s?.layout]);
-  // Sau mỗi lần vẽ: layer đang chọn còn bao nhiêu phần trong khung (dữ liệu cũ có thể nằm hẳn ngoài)
-  useLayoutEffect(() => {
-    const sel = edit?.sel, root = cv.current;
-    if (!sel || sel === "slide" || !root) { setOutside(false); return; }
-    const el = root.querySelector<HTMLElement>(`[data-pick="${sel}"]`);
-    if (!el) { setOutside(false); return; }
-    const a = el.getBoundingClientRect(), b = root.getBoundingClientRect();
-    const iw = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)), ih = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
-    setOutside(a.width * a.height > 0 && (iw * ih) / (a.width * a.height) < 0.35);
-  });
+  const ghost = useGhost(cv, edit?.sel);
   if (!s) return null;
   const [title, sub] = textOf(s, L);
   const tab = size.kind === "tablet", asp = ASPECT[size.kind];
@@ -528,7 +564,8 @@ export function SlideCanvas({ p, index, width, size, loc, edit }: { p: Project; 
   const vis = (h?: boolean): CSSProperties => (h ? { visibility: "hidden" } : {});
 
   return (
-    <div data-cv ref={cv} {...kit.root} style={{ position: "relative", overflow: "hidden", width, height: (width * size.h) / size.w, fontSize: width / 100, ...background(t, index, hEm, n) }}>
+    <CanvasFrame cvRef={cv} edit={edit} kit={kit} ghost={ghost} onCenter={() => isLayer(edit?.sel) && edit?.onPatch(centerPatch(s, edit.sel, hEm), "")}
+      style={{ width, height: (width * size.h) / size.w, fontSize: width / 100, ...background(t, index, hEm, n) }}>
       {t.bg === "blur" && <BlurBackdrop t={t} img={imgFor(s, L)} mock={s.mock} thumb={th} />}
       {renderDecos(s.decos, false, t, kit)}
       {(title || sub) && (
@@ -552,13 +589,7 @@ export function SlideCanvas({ p, index, width, size, loc, edit }: { p: Project; 
       {renderExtras(s.extras, L, t, ink, zText, kit, (x, v) => edit?.onPatch(patchExtra(s, `x:${x.id}` as LayerId, { t: { ...x.t, [L]: v } }), ""))}
       {(duo || !s.hidden?.device) && devices}
       {renderDecos(s.decos, true, t, kit)}
-      {kit.guides}
-      {edit && outside && isLayer(edit.sel) && (
-        <button className="ed-bringback" onPointerDown={(e) => e.stopPropagation()} onClick={() => edit.onPatch(centerPatch(s, edit.sel as LayerId, hEm), "")}>
-          Layer is outside the frame · <b>Bring to center</b>
-        </button>
-      )}
-    </div>
+    </CanvasFrame>
   );
 }
 
@@ -573,6 +604,7 @@ export const featureShot = (p: Project, j: number) => {
 
 export function FeatureCanvas({ p, width, edit, loc }: { p: Project; width: number; edit?: CanvasEdit; loc?: string }) {
   const f = p.feature, t = p.theme, k = width / 100, L = loc ?? p.loc;
+  const fcv = useRef<HTMLDivElement>(null);
   const hEm = (100 * FEATURE_SIZE.h) / FEATURE_SIZE.w, lay = f.layout ?? "split";
   const th = width < 240, sr = screenRatio("phone", t);
   // Độ xoay gốc của máy j theo bố cục; phones[j].rz cộng thêm. Kéo nút xoay ghi phần chênh vào phones[j].rz
@@ -588,6 +620,9 @@ export function FeatureCanvas({ p, width, edit, loc }: { p: Project; width: numb
       const j = phoneIdx(l), c = j >= 0 ? phoneOf(f, j) : null;
       return c?.img ? { v: [c.ix ?? 0, c.iy ?? 0, ...panRange(c.img, c, sr)], set: (ix, iy) => ({ phones: setPhone(f, j, { ix, iy }) }) } : null;
     });
+  const fghost = useGhost(fcv, edit?.sel);
+  // Về giữa: layer dời theo offset → bỏ dời; chữ tự do (tâm x,y) → giữa banner
+  const fCenter = (l: LayerId): [number, number] => (l.startsWith("x:") ? [50, Math.round(hEm * 5) / 10] : [0, 0]);
   const ink = t.tcolor || (t.ink === "light" ? "#fff" : "#15151A");
   const Icon = FEATURE_ICONS[f.icon] ?? FEATURE_ICONS.sprout;
   const dw = f.scale, dh = dw * ASPECT.phone, dx = f.dx ?? 0, dy = f.dy ?? 0;
@@ -622,7 +657,8 @@ export function FeatureCanvas({ p, width, edit, loc }: { p: Project; width: numb
     phones = <>{phone(1, dw * 0.85, 0, { z: 1 })}{phone(0, 0, 4.5)}</>;
   }
   return (
-    <div data-cv {...kit.root} style={{ position: "relative", overflow: "hidden", width, height: (width * FEATURE_SIZE.h) / FEATURE_SIZE.w, fontSize: width / 100, ...background(t, 0, hEm, 1) }}>
+    <CanvasFrame cvRef={fcv} edit={edit} kit={kit} ghost={fghost} onCenter={() => isLayer(edit?.sel) && edit?.onPatch(withPos(f, edit.sel, ...fCenter(edit.sel)), "")}
+      style={{ width, height: (width * FEATURE_SIZE.h) / FEATURE_SIZE.w, fontSize: width / 100, ...background(t, 0, hEm, 1) }}>
       {lay !== "phones" && (
         // Khối chữ: chỉ để xếp hàng (không bắt chuột); icon / tên / tagline là 3 layer, mỗi cái dời riêng
         <div style={{ position: "absolute", top: "50%", color: ink, fontFamily: FONTS[t.font], zIndex: zText, pointerEvents: "none",
@@ -646,7 +682,19 @@ export function FeatureCanvas({ p, width, edit, loc }: { p: Project; width: numb
       )}
       {renderExtras(f.extras, L, t, ink, zText, kit, (x, v) => edit?.onPatch(patchExtra(f, `x:${x.id}` as LayerId, { t: { ...x.t, [L]: v } }), ""))}
       {f.device && <div style={{ position: "absolute", zIndex: 2, pointerEvents: "none", ...box }}>{phones}</div>}
-      {kit.guides}
-    </div>
+    </CanvasFrame>
   );
+}
+
+// --- Căn layer theo khung (Align) ---
+// Đo khung thật của layer trên canvas đang mở (.slidewrap.on) rồi dời đúng phần chênh qua withPos → dùng chung cho máy, chữ, trang trí, slide lẫn feature
+export type AlignEdge = "left" | "hcenter" | "right" | "top" | "vcenter" | "bottom";
+export function alignPatch(holder: Slide | import("@/lib/types").Feature, l: LayerId, edge: AlignEdge): Record<string, unknown> | null {
+  const root = document.querySelector<HTMLElement>(".slidewrap.on [data-cv]"), el = root?.querySelector<HTMLElement>(`[data-pick="${l}"]`);
+  if (!root || !el) return null;
+  const R = root.getBoundingClientRect(), k = R.width / 100, r = rectEm(el, R, k), H = R.height / k;
+  const dx = edge === "left" ? -r.l : edge === "right" ? 100 - r.r : edge === "hcenter" ? 50 - (r.l + r.r) / 2 : 0;
+  const dy = edge === "top" ? -r.t : edge === "bottom" ? H - r.b : edge === "vcenter" ? H / 2 - (r.t + r.b) / 2 : 0;
+  const [x, y] = posOf(holder, l);
+  return withPos(holder, l, r1(x + dx), r1(y + dy));
 }
