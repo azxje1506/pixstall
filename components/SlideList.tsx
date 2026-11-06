@@ -63,6 +63,7 @@ function LayerRow({ icon, name, sub, on, hidden, depth = 0, grp, editing, dnd, d
 }) {
   return (
     <div {...dnd} className={`litem ${on ? "on" : ""} ${hidden ? "off" : ""} ${depth ? "nested" : ""} ${grp ? "lgrp" : ""} ${drop ?? ""}`} title={grp ? "Click to select the group · double-click to rename · right-click for more" : "Shift-click to select several · right-click for more"}
+      onMouseDown={(e) => { if (e.shiftKey && !editing) e.preventDefault(); }} // Shift-click không bôi đen chữ
       onClick={(e) => { if (!editing) onClick(e.shiftKey || e.metaKey || e.ctrlKey); }} onMouseEnter={() => onHover(true)} onMouseLeave={() => onHover(false)}
       onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onMenu(e.clientX, e.clientY); }}>
       <span className="lico">{icon}</span>

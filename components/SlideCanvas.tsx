@@ -60,7 +60,8 @@ type Rect = { l: number; t: number; r: number; b: number };
 // Lớp phủ khi sửa (em): đường gióng x/y, thước đo khoảng cách m, nhãn số tip
 // box = khung kéo vùng chọn (marquee), pre = layer sẽ được chọn khi thả chuột
 // hg = khung bao nhóm khi rê chuột lên một con của nhóm (chưa vào trong)
-type Guides = { hg?: Rect; box?: Rect; pre?: LayerId[]; x?: number; y?: number; m?: { x1: number; y1: number; x2: number; y2: number; label: string }; tip?: { x: number; y: number; text: string } };
+// tip.pin = nhãn đứng yên (xoay: ghim ngay trên núm xoay lúc bắt đầu, không chạy theo chuột vòng quanh canvas)
+type Guides = { hg?: Rect; box?: Rect; pre?: LayerId[]; x?: number; y?: number; m?: { x1: number; y1: number; x2: number; y2: number; label: string }; tip?: { x: number; y: number; text: string; pin?: boolean } };
 
 const SNAP = 1.2; // em: trong khoảng này thì hút
 const r1 = (v: number) => Math.round(v * 10) / 10;
@@ -398,7 +399,7 @@ function useEditKit(edit: CanvasEdit | undefined, k: number, hEm: number, pos: (
             a = ((a + 540) % 360) - 180;
             for (const t of [0, 15, -15]) if (Math.abs(a - t) < 2) a = t;
             a = Math.round(clamp(a, scale?.set ? -180 : -45, scale?.set ? 180 : 45));
-            setG({ tip: { x: px + mx, y: py + my, text: `${a}°` } });
+            setG({ tip: { x: px, y: py, text: `${a}°`, pin: true } });
             edit.onPatch(rot.set(a), "drag-rot");
           }, () => setG({}));
         }} />
@@ -418,7 +419,8 @@ function useEditKit(edit: CanvasEdit | undefined, k: number, hEm: number, pos: (
           <span>{m.label}</span>
         </div>
       )}
-      {g.tip && <div className="ed-tip" style={{ left: `${g.tip.x}em`, top: `${g.tip.y}em` }}>{g.tip.text}</div>}
+      {/* Nhãn số: bọc khung 0×0 đặt theo em của canvas (.ed-tip có font riêng 10px nên em đặt trực tiếp trên nó sẽ sai toạ độ) */}
+      {g.tip && <div className="ed-tipwrap" style={{ left: `${g.tip.x}em`, top: `${g.tip.y}em` }}><div className={`ed-tip ${g.tip.pin ? "pin" : ""}`}>{g.tip.text}</div></div>}
       {toolbar}
       {edit.crop && <div className="ed-croptip">Drag to reposition · Esc to finish</div>}
     </>

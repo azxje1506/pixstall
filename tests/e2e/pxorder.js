@@ -38,7 +38,7 @@ const { chromium } = require('playwright');
     r.treeUndo = await tree(); need(JSON.stringify(r.treeUndo) === JSON.stringify(r.tree0), 'undo reorder');
     // 3) Phím tắt: chọn Heart (đang dưới máy) → Ctrl+Shift+] lên trên cùng
     await pg.locator('.lchildren .litem[data-lid]:has(.lname:text-is("Heart"))').first().click(); await pg.waitForTimeout(100);
-    await pg.keyboard.press('Control+Shift+BracketRight'); await pg.waitForTimeout(150);
+    await pg.keyboard.press('BracketRight'); await pg.waitForTimeout(150);
     r.tree3 = await tree(); r.heartTop = await hitTop(ids[1]);
     need(r.tree3[0] === 'Heart' && r.heartTop === ids[1], 'Ctrl+Shift+]');
     await pg.keyboard.press('Control+BracketLeft'); await pg.waitForTimeout(150);

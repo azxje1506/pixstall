@@ -306,11 +306,12 @@ export default function Editor() {
         return setPick((x) => (isLayer(x) ? "slide" : null));
       }
       // Delete / Backspace: xoá layer chữ đang chọn
-      // Ctrl/⌘ + ] / [ : lên / xuống 1 lớp; thêm Shift: lên trên cùng / xuống dưới cùng (chỉ slide)
-      if ((e.metaKey || e.ctrlKey) && (e.code === "BracketRight" || e.code === "BracketLeft") && tab === "slide" && isLayer(pick)) {
+      // Thứ tự lớp (chỉ slide): ] / [ = lên trên cùng / xuống dưới cùng; Ctrl/⌘ + ] / [ = lên / xuống 1 lớp.
+      // Không dùng Ctrl+Shift+[ ] vì trình duyệt giữ tổ hợp đó để chuyển tab
+      if ((e.code === "BracketRight" || e.code === "BracketLeft") && !e.altKey && !e.shiftKey && tab === "slide" && isLayer(pick)) {
         e.preventDefault();
-        const up = e.code === "BracketRight";
-        applyZ(idx, zIds(idx, pick), e.shiftKey ? (up ? "front" : "back") : up ? "forward" : "backward");
+        const up = e.code === "BracketRight", step = e.metaKey || e.ctrlKey;
+        applyZ(idx, zIds(idx, pick), step ? (up ? "forward" : "backward") : up ? "front" : "back");
         return;
       }
       // Ctrl/⌘+G gom nhóm · Ctrl/⌘+Shift+G rã nhóm (nhóm đang chọn, hoặc nhóm chứa layer đang chọn)
@@ -419,10 +420,10 @@ export default function Editor() {
       const ids = zIds(m.i, tg), z = (op: ZOp) => () => applyZ(m.i, ids, op);
       const can = (op: ZOp) => !!zPatch(it as Slide, ids, op);
       items.push(
-        { label: "Bring to front", icon: <BringToFront />, kbd: "Ctrl Shift ]", disabled: !can("front"), onClick: z("front") },
+        { label: "Bring to front", icon: <BringToFront />, kbd: "]", disabled: !can("front"), onClick: z("front") },
         { label: "Bring forward", icon: <ArrowUp />, kbd: "Ctrl ]", disabled: !can("forward"), onClick: z("forward") },
         { label: "Send backward", icon: <ArrowDown />, kbd: "Ctrl [", disabled: !can("backward"), onClick: z("backward") },
-        { label: "Send to back", icon: <SendToBack />, kbd: "Ctrl Shift [", disabled: !can("back"), onClick: z("back") },
+        { label: "Send to back", icon: <SendToBack />, kbd: "[", disabled: !can("back"), onClick: z("back") },
         "sep",
       );
     } else if (tg) items.push(

@@ -256,8 +256,11 @@ export const withPrune = <T extends GHolder>(h: T, pt: Partial<T> | null): Parti
 // Layer chưa có trong order (mới thêm, template thêm) được chèn theo mức z cũ của nó. Thành viên một nhóm luôn đứng liền nhau
 // (gom về chỗ thành viên cao nhất) — nhóm là một khối trong ngăn xếp như Figma
 const ALL_FIXED: LayerId[] = ["title", "sub", "device", "device2"];
+// Chỉ layer đang TỒN TẠI (máy 2 chỉ khi Duo, tiêu đề/phụ đề khi có chữ ở ít nhất 1 ngôn ngữ) — layer ma sẽ làm lệnh "lên 1 lớp" vô tác dụng
 export function universeOf(s: Slide): LayerId[] {
-  return [...ALL_FIXED, ...(s.extras ?? []).map((x) => `x:${x.id}` as LayerId), ...(s.decos ?? []).map((d) => `d:${d.id}` as LayerId)];
+  const has = (k: 0 | 1) => Object.values(s.t ?? {}).some((v) => !!v?.[k]);
+  const fixedIds = ALL_FIXED.filter((l) => (l === "device2" ? s.layout === "duo" : l === "title" ? has(0) : l === "sub" ? has(1) : true));
+  return [...fixedIds, ...(s.extras ?? []).map((x) => `x:${x.id}` as LayerId), ...(s.decos ?? []).map((d) => `d:${d.id}` as LayerId)];
 }
 // Mức z cũ + thứ tự vẽ cũ → số so sánh (lớn = nằm trên)
 function legacyRank(s: Slide): Map<LayerId, number> {

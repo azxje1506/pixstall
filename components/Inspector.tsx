@@ -224,7 +224,7 @@ function LayerList({ h, rows, onPick, onGroup, onToggle, addItems }: { h: { grou
           </div>
         ) : ((r) => (
           <div key={r.id} className={`lrow ${r.hidden ? "off" : ""} ${t.depth ? "nested" : ""}`}>
-            <button className="lmain" title="Shift-click to select several" onClick={(e) => onPick(r.id, e.shiftKey || e.metaKey || e.ctrlKey)}>
+            <button className="lmain" title="Shift-click to select several" onMouseDown={(e) => { if (e.shiftKey) e.preventDefault(); }} onClick={(e) => onPick(r.id, e.shiftKey || e.metaKey || e.ctrlKey)}>
               <span className="lico">{layerIcon(r.id, r.name)}</span>
               <span className="lname">{r.name}</span>
               <span className="lsub">{r.sub}</span>

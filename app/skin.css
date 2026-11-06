@@ -222,3 +222,10 @@ body.ed-anim .ed-hit { transition: transform .2s cubic-bezier(.2,.8,.2,1), left 
 .litem.drop-before::after { top: -1px; } .litem.drop-after::after { bottom: -1px; }
 .litem.drop-into { box-shadow: inset 0 0 0 1.5px var(--accent); background: var(--accent-soft); }
 .lchildren .litem { overflow: visible; }
+/* cây Layers: không cho bôi đen chữ khi Shift-click / kéo (ô đổi tên vẫn chọn chữ được) */
+.litem, .lrow .lmain, .lchildren { user-select: none; -webkit-user-select: none; }
+.litem .lrename { user-select: text; -webkit-user-select: text; }
+/* nhãn góc xoay: ghim ngay trên núm, đứng yên khi kéo */
+.ed-tip.pin { transform: translate(-50%, calc(-100% - 14px)); }
+.ed-tipwrap { position: absolute; width: 0; height: 0; z-index: 22; pointer-events: none; }
+.ed-tipwrap .ed-tip { left: 0; top: 0; }
