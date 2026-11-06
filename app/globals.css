@@ -173,7 +173,7 @@ input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border: 0; bord
 .ed-guide { position: absolute; z-index: 20; pointer-events: none; background: #FF3D7F; }
 .ed-guide.v { top: 0; bottom: 0; width: 1px; transform: translateX(-.5px); }
 .ed-guide.h { left: 0; right: 0; height: 1px; transform: translateY(-.5px); }
-body.dragging, body.dragging * { cursor: grabbing !important; user-select: none; }
+body.dragging, body.dragging * { cursor: var(--drag-cur, grabbing) !important; user-select: none; }
 .tip { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); }
 
 /* --- Hộp thoại --- */

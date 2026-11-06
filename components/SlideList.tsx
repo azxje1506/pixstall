@@ -6,8 +6,8 @@
 // với canvas), mắt để ẩn, thùng rác để xoá layer chữ, rê chuột để viền layer trên canvas; dòng cuối "+ Add text" mở menu thêm chữ
 // Thumbnail nằm trong khung CỐ ĐỊNH 40×64 px, slide được co vừa (contain) → hàng nào cũng cao bằng nhau dù iPhone hay iPad
 import { useState, type ReactNode } from "react";
-import { GripVertical, Trash2, Plus, CopyPlus, ImageUp, Upload, Image as ImageIcon, ChevronRight, Type, Smartphone, Eye, EyeOff, Heading, Pilcrow, Tag, Sparkles } from "lucide-react";
-import { layersOf, isHidden, fLayersOf, fIsHidden, fRemovable, type LayerId } from "@/lib/layers";
+import { GripVertical, Trash2, Plus, CopyPlus, ImageUp, Upload, Image as ImageIcon, ChevronRight, Type, Smartphone, Eye, EyeOff, Heading, Pilcrow, Tag, Sparkles, Group } from "lucide-react";
+import { layersOf, isHidden, fLayersOf, fIsHidden, fRemovable, treeOf, type LayerId } from "@/lib/layers";
 import { featureShot } from "./SlideCanvas";
 import { MenuButton, type MenuItem } from "./Popover";
 import type { CanvasPick, LayerPick } from "./SlideCanvas";
@@ -16,6 +16,7 @@ import { LIMIT } from "@/lib/presets";
 import { currentSize, textOf, plain } from "@/lib/rules";
 import { SlideCanvas, FeatureCanvas } from "./SlideCanvas";
 
+const sameSet = (a: string[], b: string[]) => a.length > 1 && a.length === b.length && b.every((x) => a.includes(x as LayerId));
 const TW = 40, TH = 64; // khung thumbnail (px, lưới 4)
 
 interface Props {
@@ -32,7 +33,9 @@ interface Props {
   onReplace: (i: number) => void; // đổi ảnh của hàng i
   onFiles: (f: FileList) => void; // thả file vào vùng trống
   pick: CanvasPick;
-  onLayer: (i: number, l: CanvasPick) => void; // i = -1: feature graphic
+  onLayer: (i: number, l: CanvasPick, add?: boolean) => void; // i = -1: feature graphic; add = Shift/⌘-click thêm vào nhóm chọn
+  onGroup: (i: number, gid: string) => void; // bấm dòng nhóm = chọn cả nhóm
+  multi: LayerId[]; // các layer đang chọn cùng lúc
   onToggleHidden: (i: number, l: LayerPick) => void;
   onHover: (l: LayerPick | null) => void;
   onRemoveLayer: (i: number, l: LayerId) => void;
@@ -44,9 +47,11 @@ export const layerIcon = (id: LayerId, name: string): ReactNode =>
   id.startsWith("device") ? <Smartphone /> : id.startsWith("d:") ? <Sparkles /> : id === "icon" ? <ImageIcon /> : id === "title" ? <Heading /> : id === "sub" ? <Pilcrow /> : name === "Badge" ? <Tag /> : <Type />;
 
 // Hàng layer con (thụt vào dưới slide/feature)
-function LayerRow({ icon, name, sub, on, hidden, onClick, onToggle, onHover, onRemove }: { icon: ReactNode; name: string; sub: string; on: boolean; hidden?: boolean; onClick: () => void; onToggle?: () => void; onHover: (v: boolean) => void; onRemove?: () => void }) {
+// depth 1 = con của nhóm (thụt thêm); grp = dòng nhóm. Shift/⌘-click → onClick(true)
+function LayerRow({ icon, name, sub, on, hidden, depth = 0, grp, onClick, onToggle, onHover, onRemove }: { icon: ReactNode; name: string; sub: string; on: boolean; hidden?: boolean; depth?: number; grp?: boolean; onClick: (add: boolean) => void; onToggle?: () => void; onHover: (v: boolean) => void; onRemove?: () => void }) {
   return (
-    <div className={`litem ${on ? "on" : ""} ${hidden ? "off" : ""}`} onClick={onClick} onMouseEnter={() => onHover(true)} onMouseLeave={() => onHover(false)}>
+    <div className={`litem ${on ? "on" : ""} ${hidden ? "off" : ""} ${depth ? "nested" : ""} ${grp ? "lgrp" : ""}`} title={grp ? "Click to select the group · double-click a layer on the canvas to edit inside" : "Shift-click to select several"}
+      onClick={(e) => onClick(e.shiftKey || e.metaKey || e.ctrlKey)} onMouseEnter={() => onHover(true)} onMouseLeave={() => onHover(false)}>
       <span className="lico">{icon}</span>
       <span className="lname">{name}</span>
       <span className="lsub">{sub}</span>
@@ -56,7 +61,7 @@ function LayerRow({ icon, name, sub, on, hidden, onClick, onToggle, onHover, onR
   );
 }
 
-export function SlideList({ p, sel, tab, onPick, onFeature, onMove, onDelete, onDuplicate, onUpload, onMenu, onReplace, onFiles, pick, onLayer, onToggleHidden, onHover, onRemoveLayer, addItems }: Props) {
+export function SlideList({ p, sel, tab, onPick, onFeature, onMove, onDelete, onDuplicate, onUpload, onMenu, onReplace, onFiles, pick, multi, onLayer, onGroup, onToggleHidden, onHover, onRemoveLayer, addItems }: Props) {
   const z = currentSize(p);
   const [drag, setDrag] = useState<number | null>(null);
   const [mark, setMark] = useState<{ i: number; after: boolean } | null>(null); // vạch chỗ thả khi kéo hàng
@@ -123,10 +128,13 @@ export function SlideList({ p, sel, tab, onPick, onFeature, onMove, onDelete, on
           </div>
           {open && (
             <div className="lchildren">
-              {layersOf(s, p.loc, ((i + 1) % p.slides.length) + 1).map((l) => (
-                <LayerRow key={l.id} icon={layerIcon(l.id, l.name)} name={l.name} sub={l.sub} on={pick === l.id} hidden={isHidden(s, l.id)}
-                  onClick={() => onLayer(i, l.id)} onToggle={() => onToggleHidden(i, l.id)} onHover={(v) => onHover(v ? l.id : null)}
-                  onRemove={l.id === "device" || l.id === "device2" ? undefined : () => onRemoveLayer(i, l.id)} />
+              {treeOf(s, layersOf(s, p.loc, ((i + 1) % p.slides.length) + 1)).map((r) => r.kind === "group" ? (
+                <LayerRow key={"g" + r.g.id} grp icon={<Group />} name={r.g.name} sub={`${r.g.ids.length} layers`} on={sameSet(multi, r.g.ids)}
+                  onClick={() => onGroup(i, r.g.id)} onHover={() => {}} />
+              ) : (
+                <LayerRow key={r.row.id} depth={r.depth} icon={layerIcon(r.row.id, r.row.name)} name={r.row.name} sub={r.row.sub} on={pick === r.row.id || multi.includes(r.row.id)} hidden={isHidden(s, r.row.id)}
+                  onClick={(add) => onLayer(i, r.row.id, add)} onToggle={() => onToggleHidden(i, r.row.id)} onHover={(v) => onHover(v ? r.row.id : null)}
+                  onRemove={r.row.id === "device" || r.row.id === "device2" ? undefined : () => onRemoveLayer(i, r.row.id)} />
               ))}
               <MenuButton className="litem ladd" placement="bottom-start" menuWidth={168} items={() => addItems(i)}>
                 <span className="lico"><Plus /></span><span className="lname">Add text</span>
@@ -145,10 +153,13 @@ export function SlideList({ p, sel, tab, onPick, onFeature, onMove, onDelete, on
             </div>
             {tab === "feature" && (
               <div className="lchildren">
-                {fLayersOf(p.feature, p.loc, (j) => featureShot(p, j) + 1).map((l) => (
-                  <LayerRow key={l.id} icon={layerIcon(l.id, l.name)} name={l.name} sub={l.sub} on={pick === l.id} hidden={fIsHidden(p.feature, l.id)}
-                    onClick={() => onLayer(-1, l.id)} onToggle={() => onToggleHidden(-1, l.id)} onHover={(v) => onHover(v ? l.id : null)}
-                    onRemove={fRemovable(l.id) ? () => onRemoveLayer(-1, l.id) : undefined} />
+                {treeOf(p.feature, fLayersOf(p.feature, p.loc, (j) => featureShot(p, j) + 1)).map((r) => r.kind === "group" ? (
+                  <LayerRow key={"g" + r.g.id} grp icon={<Group />} name={r.g.name} sub={`${r.g.ids.length} layers`} on={sameSet(multi, r.g.ids)}
+                    onClick={() => onGroup(-1, r.g.id)} onHover={() => {}} />
+                ) : (
+                  <LayerRow key={r.row.id} depth={r.depth} icon={layerIcon(r.row.id, r.row.name)} name={r.row.name} sub={r.row.sub} on={pick === r.row.id || multi.includes(r.row.id)} hidden={fIsHidden(p.feature, r.row.id)}
+                    onClick={(add) => onLayer(-1, r.row.id, add)} onToggle={() => onToggleHidden(-1, r.row.id)} onHover={(v) => onHover(v ? r.row.id : null)}
+                    onRemove={fRemovable(r.row.id) ? () => onRemoveLayer(-1, r.row.id) : undefined} />
                 ))}
                 <MenuButton className="litem ladd" placement="bottom-start" menuWidth={168} items={() => addItems(-1)}>
                   <span className="lico"><Plus /></span><span className="lname">Add text</span>

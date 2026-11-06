@@ -3,6 +3,7 @@
 // Thêm template mới: thêm 1 phần tử vào TEMPLATES (chỉ cần khai khoá khác DEFAULT_THEME)
 import type { Deco, Project, Theme } from "./types";
 import { decoColor, type DefColor } from "./decos";
+import { pruneGroups } from "./layers";
 import { currentSize } from "./rules";
 import { uid } from "./presets";
 import { DEFAULT_THEME } from "./presets";
@@ -90,7 +91,8 @@ export function applyTemplate(d: Project, tpl: Template): Project {
       const add: Deco[] = set.map((x) => ({ id: uid(), kind: x.kind, size: x.size, x: flip ? 100 - x.x : x.x, y: Math.round(x.y * hEm * 10) / 10,
         rot: flip ? -(x.rot ?? 0) : x.rot ?? 0, color: col(x.color), color2: col(x.color2), opacity: x.opacity, front: x.front, tpl: true }));
       const decos = [...own, ...add];
-      return { ...s, override: undefined, decos: decos.length ? decos : undefined };
+      const nd = decos.length ? decos : undefined;
+      return { ...s, override: undefined, decos: nd, groups: pruneGroups({ ...s, decos: nd }) }; // hình template cũ bị thay → rút khỏi nhóm
     }),
   };
 }

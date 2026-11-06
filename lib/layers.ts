@@ -2,7 +2,7 @@
 // Id layer: "title" (Headline) · "sub" (Subtitle) · "device" · "device2" (máy thứ 2, chỉ layout Duo) · "x:<id>" (chữ tự do) · "d:<id>" (hình trang trí, chỉ slide)
 // Feature graphic: "icon" · "title" (tên app) · "sub" (tagline) · "x:<id>" · "device"/"device2"/"device3" (máy 1/2/3) — hàm f*
 // posOf / withPos tự nhận ra slide hay feature (isFeat)
-import type { Deco, Feature, PhoneCfg, Slide, TextItem } from "./types";
+import type { Deco, Feature, LayerGroup, PhoneCfg, Slide, TextItem } from "./types";
 import { decoDef } from "./decos";
 import { textOf, plain } from "./rules";
 
@@ -203,3 +203,48 @@ export function fLayersOf(f: Feature, loc: string, slideNo: (j: number) => numbe
 export const fCanAdd = (f: Feature, loc: string) => { const [n, t] = featText(f, loc); return { title: !n, sub: !t }; };
 // Tên layer chung cho slide hoặc feature
 export const nameOfLayer = (s: Slide | Feature, l: LayerId) => (isFeat(s) ? fLayerName(s, l) : layerName(s, l));
+
+// ===================== Nhóm layer (Group) =====================
+// Holder = slide hoặc feature (cùng có groups/extras/decos). Hàm trả patch { groups } để đưa vào onPatch / update
+type GHolder = { groups?: LayerGroup[]; extras?: TextItem[]; decos?: Deco[] };
+export const groupsOf = (h: GHolder): LayerGroup[] => h.groups ?? [];
+export const groupOf = (h: GHolder, l: LayerId): LayerGroup | undefined => groupsOf(h).find((g) => g.ids.includes(l));
+export const groupById = (h: GHolder, id: string | null | undefined) => (id ? groupsOf(h).find((g) => g.id === id) : undefined);
+// Mở rộng danh sách chọn: layer nằm trong nhóm → kéo theo cả nhóm (trừ nhóm đang "vào trong" enter)
+export function expandGroups(h: GHolder, ls: LayerId[], enter?: string | null): LayerId[] {
+  const out: LayerId[] = [];
+  for (const l of ls) { const g = groupOf(h, l); for (const x of g && g.id !== enter ? (g.ids as LayerId[]) : [l]) if (!out.includes(x)) out.push(x); }
+  return out;
+}
+// Nhóm có đúng tập layer ls (không phân biệt thứ tự) — để biết đang chọn "cả nhóm"
+export const groupExact = (h: GHolder, ls: LayerId[]) => groupsOf(h).find((g) => g.ids.length === ls.length && g.ids.every((x) => ls.includes(x as LayerId)));
+// Bỏ id không còn tồn tại (chữ tự do / trang trí đã xoá) và nhóm còn < 2 layer
+export function pruneGroups(h: GHolder): LayerGroup[] | undefined {
+  const alive = (l: string) => l.startsWith("x:") ? !!h.extras?.some((x) => x.id === l.slice(2)) : l.startsWith("d:") ? !!h.decos?.some((d) => d.id === l.slice(2)) : true;
+  const gs = groupsOf(h).map((g) => ({ ...g, ids: g.ids.filter(alive) })).filter((g) => g.ids.length > 1);
+  return gs.length ? gs : undefined;
+}
+// Gom ls thành nhóm mới (layer đang ở nhóm khác thì rút ra); tên mặc định "Group N"
+export function makeGroup(h: GHolder, ls: LayerId[], id: string): { groups: LayerGroup[] } {
+  const rest = groupsOf(h).map((g) => ({ ...g, ids: g.ids.filter((x) => !ls.includes(x as LayerId)) })).filter((g) => g.ids.length > 1);
+  let n = groupsOf(h).length + 1; while (groupsOf(h).some((g) => g.name === `Group ${n}`)) n++;
+  return { groups: [...rest, { id, name: `Group ${n}`, ids: [...ls] }] };
+}
+export const ungroup = (h: GHolder, id: string): { groups: LayerGroup[] | undefined } => { const gs = groupsOf(h).filter((g) => g.id !== id); return { groups: gs.length ? gs : undefined }; };
+export const renameGroup = (h: GHolder, id: string, name: string) => ({ groups: groupsOf(h).map((g) => (g.id === id ? { ...g, name } : g)) });
+// Cây Layers có nhóm: nhóm nằm ở vị trí layer con đầu tiên, các con xếp ngay dưới (depth 1)
+export type TreeRow<R> = { kind: "group"; g: LayerGroup; depth: 0 } | { kind: "layer"; row: R; depth: 0 | 1; g?: LayerGroup };
+export function treeOf<R extends { id: LayerId }>(h: GHolder, rows: R[]): TreeRow<R>[] {
+  const out: TreeRow<R>[] = [], done = new Set<string>();
+  for (const r of rows) {
+    const g = groupOf(h, r.id);
+    if (!g) { out.push({ kind: "layer", row: r, depth: 0 }); continue; }
+    if (done.has(g.id)) continue;
+    done.add(g.id);
+    out.push({ kind: "group", g, depth: 0 });
+    for (const c of rows) if (g.ids.includes(c.id)) out.push({ kind: "layer", row: c, depth: 1, g });
+  }
+  return out;
+}
+// Patch xoá/sửa layer kèm tỉa nhóm (layer đã mất thì rút khỏi nhóm, nhóm < 2 con thì giải tán)
+export const withPrune = <T extends GHolder>(h: T, pt: Partial<T> | null): Partial<T> | null => (pt ? { ...pt, groups: pruneGroups({ ...h, ...pt }) } : null);

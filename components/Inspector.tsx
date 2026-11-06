@@ -10,8 +10,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ImageUp, CopyPlus, ImageOff, RotateCcw, Smartphone, EyeOff, Eye, TextAlignStart, TextAlignCenter, Sun, Moon, Type,
   PanelBottom, ArrowDownToLine, Copy, MoveRight, CopyCheck, ChevronRight, Frame, Highlighter, Plus, Trash2, Crop, Link2, Languages, Columns2, AlignCenter, GalleryHorizontalEnd, Image as ImageIcon, LocateFixed, AlignStartVertical, AlignCenterVertical, AlignEndVertical, AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
-  AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, Layers2, X } from "lucide-react";
-import type { Deco, Project, Slide, Theme, ThemeKey, Feature, Layout, Tilt3D, FrameStyle, FrameColor, Bg, TextItem, ImgFit, PhoneCfg } from "@/lib/types";
+  AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, Layers2, X, Group as GroupIcon, Ungroup } from "lucide-react";
+import type { LayerGroup, Deco, Project, Slide, Theme, ThemeKey, Feature, Layout, Tilt3D, FrameStyle, FrameColor, Bg, TextItem, ImgFit, PhoneCfg } from "@/lib/types";
 import { FONTS, FRAME_COLORS, GRADIENTS, TILT_PRESETS, DEFAULT_THEME, LOCALES, uid } from "@/lib/presets";
 import { DECOS, DECO_GROUPS, decoDef, decoColor, decoSize } from "@/lib/decos";
 import { textOf, themeOf, plain, allSizes, imgFor, currentSize } from "@/lib/rules";
@@ -21,11 +21,11 @@ import { Seg, Slider, Group, Num, Prop, Tabs } from "./ui";
 import { ColorField } from "./ColorField";
 import { MenuButton, type MenuItem } from "./Popover";
 import type { CanvasPick, LayerPick } from "./SlideCanvas";
-import { isLayer, isDeco, decoOf, patchDeco, centerPatch, isHidden, layersOf, layerName as nameOf, extraOf, extraText, patchExtra, posOf, withPos, featText, setFeatText, fLayersOf, fIsHidden, fRemovable, fLayerName, phoneIdx, phoneOf, setPhone, phoneCount as phoneCountOf, type LayerId } from "@/lib/layers";
+import { isLayer, isDeco, decoOf, patchDeco, centerPatch, isHidden, layersOf, layerName as nameOf, extraOf, extraText, patchExtra, posOf, withPos, featText, setFeatText, fLayersOf, fIsHidden, fRemovable, fLayerName, phoneIdx, phoneOf, setPhone, phoneCount as phoneCountOf, treeOf, groupExact, groupById, expandGroups, makeGroup, ungroup, renameGroup, type LayerId } from "@/lib/layers";
 import { imgSrc, imgMeta, putImage } from "@/lib/images";
 import { ASPECT } from "./Device";
 import { TEMPLATES, TPL_GROUPS, activeTemplate, applyTemplate, type Template } from "@/lib/templates";
-import { panRange, screenRatio, featureShot, alignPatch, alignManyPatch, distributePatch, type AlignEdge } from "./SlideCanvas";
+import { panRange, screenRatio, featureShot, alignPatch, alignManyPatch, alignUnitPatch, distributePatch, type AlignEdge } from "./SlideCanvas";
 import { layerIcon } from "./SlideList";
 
 type Update = (fn: (d: Project) => Project, tag?: string) => void;
@@ -210,14 +210,21 @@ function DeviceControls({ v, scaleRange, onChange, tag, right, label = "Device",
 
 // --- Danh sách layer con trong panel cấp Slide: bấm để chọn, mắt để ẩn/hiện ---
 // Shift/⌘/Ctrl-click một dòng = thêm/bớt layer đó vào nhóm chọn (add = true)
-function LayerList({ rows, onPick, onToggle, addItems }: { rows: { id: LayerId; name: string; sub: string; hidden?: boolean }[]; onPick: (l: LayerId, add?: boolean) => void; onToggle?: (l: LayerId) => void; addItems?: () => MenuItem[] }) {
+// h = slide/feature (để xếp nhóm: dòng nhóm + con thụt vào); bấm dòng nhóm = chọn cả nhóm
+function LayerList({ h, rows, onPick, onGroup, onToggle, addItems }: { h: { groups?: LayerGroup[] }; rows: { id: LayerId; name: string; sub: string; hidden?: boolean }[]; onPick: (l: LayerId, add?: boolean) => void; onGroup: (gid: string) => void; onToggle?: (l: LayerId) => void; addItems?: () => MenuItem[] }) {
   return (
     // Nút "Add text" sát mép phải panel → menu căn mép phải với nút (bottom-end), không đè lên danh sách
     <Group title="Layers" right={addItems && <MenuButton className="gbtn" title="Add a text layer" placement="bottom-end" menuWidth={168} items={addItems}><Plus />Add text</MenuButton>}>
       <div className="llist">
-        {rows.map((r) => (
-          <div key={r.id} className={`lrow ${r.hidden ? "off" : ""}`}>
-            <button className="lmain" onClick={(e) => onPick(r.id, e.shiftKey || e.metaKey || e.ctrlKey)}>
+        {treeOf(h, rows).map((t) => t.kind === "group" ? (
+          <div key={"g" + t.g.id} className="lrow lgrp">
+            <button className="lmain" title="Select the whole group" onClick={() => onGroup(t.g.id)}>
+              <span className="lico"><GroupIcon /></span><span className="lname">{t.g.name}</span><span className="lsub">{t.g.ids.length} layers</span><ChevronRight className="lgo" />
+            </button>
+          </div>
+        ) : ((r) => (
+          <div key={r.id} className={`lrow ${r.hidden ? "off" : ""} ${t.depth ? "nested" : ""}`}>
+            <button className="lmain" title="Shift-click to select several" onClick={(e) => onPick(r.id, e.shiftKey || e.metaKey || e.ctrlKey)}>
               <span className="lico">{layerIcon(r.id, r.name)}</span>
               <span className="lname">{r.name}</span>
               <span className="lsub">{r.sub}</span>
@@ -225,7 +232,7 @@ function LayerList({ rows, onPick, onToggle, addItems }: { rows: { id: LayerId; 
             </button>
             {onToggle && <button className="ibtn" title={r.hidden ? "Show layer" : "Hide layer"} aria-label={`${r.hidden ? "Show" : "Hide"} ${r.name}`} onClick={() => onToggle(r.id)}>{r.hidden ? <EyeOff /> : <Eye />}</button>}
           </div>
-        ))}
+        ))(t.row))}
       </div>
     </Group>
   );
@@ -306,9 +313,10 @@ function StyleTab({ sc, owned, onClearAll, onTemplate }: { sc: Scope; owned: num
 }
 
 type ImgKey = "img" | "img2";
-export function Inspector({ p, sel, tab, update, pick, multi, onMulti, onPickLayer, onToggleHidden, onRemoveLayer, addItems, onReplace, onReplaceFile, onDuplicate, onFlash, crop, onCrop }: {
+export function Inspector({ p, sel, tab, update, pick, multi, onMulti, enter, onPickGroup, onPickRow, onPickLayer, onToggleHidden, onRemoveLayer, addItems, onReplace, onReplaceFile, onDuplicate, onFlash, crop, onCrop }: {
   p: Project; sel: number; tab: "slide" | "feature"; update: Update; pick: CanvasPick;
   multi: LayerId[]; onMulti: (ls: LayerId[]) => void; // nhóm chọn ≥2 layer → panel Align/Distribute nhóm
+  enter: string | null; onPickGroup: (gid: string) => void; onPickRow: (l: LayerId, add?: boolean) => void; // nhóm đang vào trong · chọn nhóm · bấm dòng cây Layers
   onPickLayer: (l: CanvasPick) => void; onToggleHidden: (l: LayerPick) => void;
   onRemoveLayer: (l: LayerId) => void; addItems: () => MenuItem[];
   onReplace: (k?: ImgKey) => void; onReplaceFile: (f: File | undefined, k?: ImgKey) => void; onDuplicate: () => void; onFlash: (m: string, undo?: boolean) => void;
@@ -380,77 +388,98 @@ export function Inspector({ p, sel, tab, update, pick, multi, onMulti, onPickLay
   // Breadcrumb: "Slide 03 › Device"; bấm phần đầu để lùi về cấp slide
   const rootName = isFeature ? "Feature graphic" : `Slide ${String(sel + 1).padStart(2, "0")}`;
   const layerName = !layer ? "" : isFeature ? fLayerName(p.feature, layer) : nameOf(p.slides[sel], layer);
+  const inGrp = layer ? groupById(isFeature ? p.feature : p.slides[sel] ?? {}, enter) : undefined; // đang sửa con bên trong nhóm
   const crumb = (actions: ReactNode) => (
     <div className="slidebar">
       <nav className="crumb" aria-label="Selection">
         {layer ? <button className="cr-root" onClick={() => onPickLayer("slide")}>{rootName}</button> : <span className="cr-cur">{isFeature ? <ImageIcon /> : <Frame />}{rootName}</span>}
+        {layer && inGrp && <><ChevronRight className="cr-sep" /><button className="cr-root cr-grp" title={`${inGrp.name} — select the whole group  ·  Esc`} onClick={() => onPickGroup(inGrp.id)}><GroupIcon />{inGrp.name}</button></>}
         {layer && <><ChevronRight className="cr-sep" /><span className="cr-cur">{layerIcon(layer, layerName)}{layerName}</span></>}
       </nav>
       <span className="row g4">{actions}</span>
     </div>
   );
   // Thanh căn lề cho layer đang chọn (dưới breadcrumb): 3 nút ngang · 3 nút dọc, căn theo khung slide/banner
-  const ALIGNS: [AlignEdge, string, ReactNode][] = [
-    ["left", "Align left", <AlignStartVertical key="l" />], ["hcenter", "Align horizontal center", <AlignCenterVertical key="hc" />], ["right", "Align right", <AlignEndVertical key="r" />],
-    ["top", "Align top", <AlignStartHorizontal key="t" />], ["vcenter", "Align vertical center", <AlignCenterHorizontal key="vc" />], ["bottom", "Align bottom", <AlignEndHorizontal key="b" />],
+  const ALIGNS: [AlignEdge, string, ReactNode, string][] = [ // [cạnh, tên (aria-label), icon, phím tắt hiện trong tooltip]
+    ["left", "Align left", <AlignStartVertical key="l" />, "Alt A"], ["hcenter", "Align horizontal center", <AlignCenterVertical key="hc" />, "Alt H"], ["right", "Align right", <AlignEndVertical key="r" />, "Alt D"],
+    ["top", "Align top", <AlignStartHorizontal key="t" />, "Alt W"], ["vcenter", "Align vertical center", <AlignCenterHorizontal key="vc" />, "Alt V"], ["bottom", "Align bottom", <AlignEndHorizontal key="b" />, "Alt S"],
   ];
   const alignBar = (onAlign: (edge: AlignEdge) => void) => layer && (
     <div className="alignbar" role="toolbar" aria-label="Align to frame">
       <span className="plab">Align</span>
-      <div className="aligngrp">{ALIGNS.slice(0, 3).map(([e, tt, ic]) => <button key={e} className="ibtn" title={tt} aria-label={tt} onClick={() => onAlign(e)}>{ic}</button>)}</div>
-      <div className="aligngrp">{ALIGNS.slice(3).map(([e, tt, ic]) => <button key={e} className="ibtn" title={tt} aria-label={tt} onClick={() => onAlign(e)}>{ic}</button>)}</div>
+      <div className="aligngrp">{ALIGNS.slice(0, 3).map(([e, tt, ic, kb]) => <button key={e} className="ibtn" title={`${tt}  ·  ${kb}`} aria-label={tt} onClick={() => onAlign(e)}>{ic}</button>)}</div>
+      <div className="aligngrp">{ALIGNS.slice(3).map(([e, tt, ic, kb]) => <button key={e} className="ibtn" title={`${tt}  ·  ${kb}`} aria-label={tt} onClick={() => onAlign(e)}>{ic}</button>)}</div>
     </div>
   );
 
   // Panel khi chọn nhiều layer: Align (theo nhóm / theo khung) + Distribute + danh sách layer trong nhóm (bấm = chọn riêng, × = bỏ khỏi nhóm)
   const many = multi.length > 1 ? multi : null;
-  const pickRow = (l: LayerId, add?: boolean) => {
-    if (!add) return onPickLayer(l);
-    const cur = many ?? (layer ? [layer] : []);
-    onMulti(cur.includes(l) ? cur.filter((x) => x !== l) : [...cur, l]);
-  };
+  const pickRow = onPickRow;
   // Hiệu ứng trượt ngắn khi căn/dàn đều (lớp .ed-anim trên body ~220ms) — layer lướt tới chỗ mới thay vì nhảy cóc
   const glide = (fn: () => void) => { document.body.classList.add("ed-anim"); fn(); setTimeout(() => document.body.classList.remove("ed-anim"), 240); };
-  const multiView = (holder: Slide | Feature, apply: (pt: Record<string, unknown>) => void, nm: (l: LayerId) => string) => many && (
-    <aside className="right">{head}
-      <div className="slidebar">
-        <nav className="crumb" aria-label="Selection">
-          <button className="cr-root" onClick={() => onPickLayer("slide")}>{rootName}</button>
-          <ChevronRight className="cr-sep" /><span className="cr-cur"><Layers2 />{many.length} layers</span>
-        </nav>
-      </div>
-      <div className="alignbar" role="toolbar" aria-label="Align selection">
-        <span className="plab">Align</span>
-        <div className="aligngrp">{ALIGNS.slice(0, 3).map(([e, tt, ic]) => <button key={e} className="ibtn" title={tt} aria-label={tt} onClick={() => { const pt = alignManyPatch(holder, many, e, toFrame); if (pt) glide(() => apply(pt)); }}>{ic}</button>)}</div>
-        <div className="aligngrp">{ALIGNS.slice(3).map(([e, tt, ic]) => <button key={e} className="ibtn" title={tt} aria-label={tt} onClick={() => { const pt = alignManyPatch(holder, many, e, toFrame); if (pt) glide(() => apply(pt)); }}>{ic}</button>)}</div>
-      </div>
-      <div className="alignbar" role="toolbar" aria-label="Distribute selection">
-        <span className="plab">Distribute</span>
-        <div className="aligngrp">
-          {([["h", "Distribute horizontal spacing", <AlignHorizontalDistributeCenter key="h" />], ["v", "Distribute vertical spacing", <AlignVerticalDistributeCenter key="v" />]] as const).map(([ax, tt, ic]) => (
-            <button key={ax} className="ibtn" title={many.length < 3 ? "Select 3 or more layers to distribute" : tt} aria-label={tt} disabled={many.length < 3}
-              onClick={() => { const pt = distributePatch(holder, many, ax); if (pt) glide(() => apply(pt)); }}>{ic}</button>
-          ))}
+  // Panel nhóm chọn. Hai dạng:
+  //  • Chọn rời (Shift-click / kéo vùng): Align theo khung bao chọn hoặc theo slide, Distribute, nút Group (Ctrl+G)
+  //  • Đúng một Group: tên sửa được, Align = dời CẢ CỤM theo khung slide (giữ bố cục trong nhóm), Distribute các con, Ungroup
+  // Danh sách layer: bấm = chọn riêng (vào trong nhóm), × = bỏ khỏi chọn (chỉ dạng chọn rời)
+  const multiView = (holder: Slide | Feature, apply: (pt: Record<string, unknown>, tag?: string) => void, nm: (l: LayerId) => string) => {
+    if (!many) return null;
+    const grp = groupExact(holder, many);
+    const doAlign = (e: AlignEdge) => { const pt = grp ? alignUnitPatch(holder, many, e) : alignManyPatch(holder, many, e, toFrame); if (pt) glide(() => apply(pt, "align")); };
+    const btn = ([e, tt, ic, kb]: (typeof ALIGNS)[number]) => <button key={e} className="ibtn" title={`${tt}  ·  ${kb}`} aria-label={tt} onClick={() => doAlign(e)}>{ic}</button>;
+    return (
+      <aside className="right">{head}
+        <div className="slidebar">
+          <nav className="crumb" aria-label="Selection">
+            <button className="cr-root" onClick={() => onPickLayer("slide")}>{rootName}</button>
+            <ChevronRight className="cr-sep" /><span className="cr-cur">{grp ? <GroupIcon /> : <Layers2 />}{grp ? grp.name : `${many.length} layers`}</span>
+          </nav>
+          <span className="row g4">
+            {grp
+              ? <button className="gbtn" title="Ungroup  ·  Ctrl Shift G" onClick={() => { apply(ungroup(holder, grp.id), "ungroup"); onFlash(`${grp.name} ungrouped`, true); }}><Ungroup />Ungroup</button>
+              : <button className="gbtn" title="Group selection  ·  Ctrl G" onClick={() => { const ls = expandGroups(holder, many), pt = makeGroup(holder, ls, uid()); apply(pt, "group"); onMulti(ls); onFlash(`${pt.groups[pt.groups.length - 1].name} created · double-click to edit inside`, true); }}><GroupIcon />Group</button>}
+          </span>
         </div>
-      </div>
-      <Group title="Align to">
-        <Tabs value={toFrame ? "frame" : "sel"} onChange={(v) => setToFrame(v === "frame")} options={[{ v: "sel", label: "Selection" }, { v: "frame", label: isFeature ? "Banner" : "Slide" }]} />
-      </Group>
-      <Group title="Selected layers">
-        <div className="llist">
-          {many.map((l) => (
-            <div key={l} className="lrow">
-              <button className="lmain" onClick={() => onMulti([l])}>
-                <span className="lico">{layerIcon(l, nm(l))}</span><span className="lname">{nm(l)}</span><ChevronRight className="lgo" />
-              </button>
-              <button className="ibtn" title="Remove from selection" aria-label={`Remove ${nm(l)} from selection`} onClick={() => onMulti(many.filter((x) => x !== l))}><X /></button>
-            </div>
-          ))}
+        <div className="alignbar" role="toolbar" aria-label={grp ? "Align group to frame" : "Align selection"}>
+          <span className="plab">{grp ? "Align to frame" : "Align"}</span>
+          <div className="aligngrp">{ALIGNS.slice(0, 3).map(btn)}</div>
+          <div className="aligngrp">{ALIGNS.slice(3).map(btn)}</div>
         </div>
-        <p className="hint">Shift-click layers to add or remove · drag any of them to move all · arrows nudge · Delete removes text &amp; decorations · Esc clears.</p>
-      </Group>
-    </aside>
-  );
+        <div className="alignbar" role="toolbar" aria-label="Distribute selection">
+          <span className="plab">Distribute</span>
+          <div className="aligngrp">
+            {([["h", "Distribute horizontal spacing", <AlignHorizontalDistributeCenter key="h" />], ["v", "Distribute vertical spacing", <AlignVerticalDistributeCenter key="v" />]] as const).map(([ax, tt, ic]) => (
+              <button key={ax} className="ibtn" title={many.length < 3 ? "Select 3 or more layers to distribute" : tt} aria-label={tt} disabled={many.length < 3}
+                onClick={() => { const pt = distributePatch(holder, many, ax); if (pt) glide(() => apply(pt, "align")); }}>{ic}</button>
+            ))}
+          </div>
+        </div>
+        {grp ? (
+          <Group title="Group">
+            <Prop label="Name"><input className="field" aria-label="Group name" value={grp.name} onChange={(e) => apply(renameGroup(holder, grp.id, e.target.value), "gname")} /></Prop>
+          </Group>
+        ) : (
+          <Group title="Align to">
+            <Tabs value={toFrame ? "frame" : "sel"} onChange={(v) => setToFrame(v === "frame")} options={[{ v: "sel", label: "Selection" }, { v: "frame", label: isFeature ? "Banner" : "Slide" }]} />
+          </Group>
+        )}
+        <Group title={grp ? "Layers in group" : "Selected layers"}>
+          <div className="llist">
+            {many.map((l) => (
+              <div key={l} className="lrow">
+                <button className="lmain" title={grp ? "Edit this layer inside the group" : "Select only this layer"} onClick={() => onPickRow(l)}>
+                  <span className="lico">{layerIcon(l, nm(l))}</span><span className="lname">{nm(l)}</span><ChevronRight className="lgo" />
+                </button>
+                {!grp && <button className="ibtn" title="Remove from selection" aria-label={`Remove ${nm(l)} from selection`} onClick={() => onMulti(many.filter((x) => x !== l))}><X /></button>}
+              </div>
+            ))}
+          </div>
+          <p className="hint">{grp
+            ? "Click any member on the canvas to select the group · double-click to edit inside · Esc steps back out."
+            : "Shift-click layers to add or remove · drag any of them to move all · arrows nudge · Delete removes text & decorations · Esc clears."}</p>
+        </Group>
+      </aside>
+    );
+  };
 
   // Bọc phần đang bôi đen trong ô (tiêu đề/phụ đề/chữ tự do) bằng *…* (bấm lại khi đã bọc thì gỡ)
   const highlight = (val: string, write: (v: string) => void) => {
@@ -635,7 +664,7 @@ export function Inspector({ p, sel, tab, update, pick, multi, onMulti, onPickLay
         <FrameGroup sc={project} />
       </>;
     } else body = <>
-      <LayerList onPick={pickRow} onToggle={onToggleHidden} addItems={addItems}
+      <LayerList h={f} onPick={pickRow} onGroup={onPickGroup} onToggle={onToggleHidden} addItems={addItems}
         rows={fLayersOf(f, p.loc, (j) => featureShot(p, j) + 1).map((l) => ({ ...l, hidden: fIsHidden(f, l.id) }))} />
       <Group id="f-layout" title="Layout" right={<span className="mono">1024×500</span>}>
         <div className="layouts three">
@@ -647,7 +676,7 @@ export function Inspector({ p, sel, tab, update, pick, multi, onMulti, onPickLay
       </Group>
       <BgGroup sc={project} />
     </>;
-    if (many) return multiView(f, (pt) => setFeature(pt as Partial<Feature>, "align"), (l) => fLayerName(f, l));
+    if (many) return multiView(f, (pt, tg) => setFeature(pt as Partial<Feature>, tg), (l) => fLayerName(f, l));
     return <aside className="right">{head}{crumb(actions)}{alignBar((e) => { const pt = layer && alignPatch(f, layer, e); if (pt) setFeature(pt as Partial<Feature>, "align"); })}{body}{filePicker}</aside>;
   }
 
@@ -806,7 +835,7 @@ export function Inspector({ p, sel, tab, update, pick, multi, onMulti, onPickLay
     </Group>
   </>;
   else body = <>
-    <LayerList onPick={pickRow} onToggle={onToggleHidden} addItems={addItems}
+    <LayerList h={s} onPick={pickRow} onGroup={onPickGroup} onToggle={onToggleHidden} addItems={addItems}
       rows={layersOf(s, p.loc, nextNo).map((l) => ({ ...l, hidden: isHidden(s, l.id) }))} />
     <Group id="s-decor" title="Decorations">
       <DecoGrid t={slideScope.t} onPick={(kind) => {
@@ -827,6 +856,6 @@ export function Inspector({ p, sel, tab, update, pick, multi, onMulti, onPickLay
     <BgGroup sc={slideScope} />
   </>;
 
-  if (many) return multiView(s, (pt) => setSlide(pt as Partial<Slide>, "align"), (l) => nameOf(s, l));
+  if (many) return multiView(s, (pt, tg) => setSlide(pt as Partial<Slide>, tg), (l) => nameOf(s, l));
   return <aside className="right">{head}{crumb(actions)}{alignBar((e) => { const pt = layer && alignPatch(s, layer, e); if (pt) setSlide(pt as Partial<Slide>, "align"); })}{body}{filePicker}</aside>;
 }

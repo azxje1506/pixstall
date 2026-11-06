@@ -41,6 +41,7 @@ export interface Slide extends Tilt3D {
   sx?: number; sy?: number; // phụ đề (Subtitle)
   extras?: TextItem[]; // layer chữ tự do
   decos?: Deco[]; // hình trang trí (layer "d:<id>")
+  groups?: LayerGroup[]; // nhóm layer (Ctrl+G) — xem LayerGroup
   front?: "text" | "device"; // phần nào nằm trên (mặc định chữ trên máy)
   hidden?: { title?: boolean; sub?: boolean; device?: boolean; device2?: boolean; text?: boolean }; // ẩn layer (cả lúc xuất); text = bản cũ, tự chuyển khi nạp
   override?: Partial<Theme>; // style riêng của slide này, đè lên Project style
@@ -92,6 +93,11 @@ export interface TextItem {
   hidden?: boolean;
 }
 
+// Nhóm layer: node cha giữ danh sách id con (LayerId "title" | "x:<id>" | "d:<id>"…); mỗi layer thuộc tối đa 1 nhóm, không lồng nhóm.
+// Toạ độ con vẫn tuyệt đối theo hệ riêng của từng loại layer (tiêu đề/máy là độ dời trong bố cục, chữ tự do/trang trí là tâm) →
+// kéo/căn nhóm = dời mọi con cùng một khoảng. id nhóm chỉ duy nhất trong 1 slide (nhân bản slide giữ nguyên được)
+export interface LayerGroup { id: string; name: string; ids: string[] }
+
 // Hình trang trí (kho lib/decos.ts): tâm x,y (em), rộng size (em), xoay rot (độ); màu thiếu = theo theme
 // front = nằm trên máy và chữ (mặc định nằm dưới); tpl = do template thêm (áp template khác sẽ thay bộ này)
 export interface Deco { id: string; kind: string; x: number; y: number; size: number; rot?: number; color?: string; color2?: string; opacity?: number; front?: boolean; hidden?: boolean; tpl?: boolean }
@@ -114,6 +120,7 @@ export interface Feature extends Tilt3D {
   sx?: number; sy?: number; ox?: number; oy?: number;
   hidden?: { title?: boolean; sub?: boolean; icon?: boolean };
   extras?: TextItem[]; // chữ tự do / badge thêm vào feature graphic
+  groups?: LayerGroup[]; // nhóm layer (Ctrl+G)
   phones?: PhoneCfg[]; // cấu hình riêng từng máy (index theo thứ tự máy)
   layout?: "split" | "center" | "phones"; // chữ trái + máy phải · chữ giữa + 2 máy 2 bên · chỉ 3 máy
   shots?: string[]; // id slide cho từng máy (thiếu = slide theo thứ tự)
